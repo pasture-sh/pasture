@@ -1,0 +1,89 @@
+name: Pasture
+options:
+  bundleIdPrefix: com.amrith
+  deploymentTarget:
+    iOS: "17.4"
+    macOS: "14.0"
+  xcodeVersion: "16"
+  generateEmptyDirectories: true
+  createIntermediateGroups: true
+
+packages:
+  Loom:
+    url: https://github.com/EthanLipnik/Loom
+    exactVersion: 1.2.0
+  swift-markdown-ui:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.0
+
+targets:
+  Pasture:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/Pasture
+    resources:
+      - path: Sources/Pasture/Assets.xcassets
+        optional: true
+    info:
+      path: Sources/Pasture/Info.plist
+      properties:
+        CFBundleDisplayName: Pasture
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: "Pasture uses your local network to find and connect to your Mac running Ollama."
+        NSBonjourServices:
+          - _pasture._tcp
+        PastureMacDownloadURL: ""
+        MacCompanionDownloadURL: ""
+    dependencies:
+      - package: Loom
+        product: Loom
+      - package: Loom
+        product: LoomKit
+      - package: swift-markdown-ui
+        product: MarkdownUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amrith.pasture
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: Sources/Pasture/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+
+  PastureTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/PastureTests
+    dependencies:
+      - target: Pasture
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amrith.pasture.tests
+        SWIFT_VERSION: "6.0"
+
+  PastureHelper:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/PastureHelper
+    resources:
+      - path: Sources/PastureHelper/Assets.xcassets
+        optional: true
+    info:
+      path: Sources/PastureHelper/Info.plist
+      properties:
+        CFBundleDisplayName: Pasture for Mac
+        LSUIElement: true
+        NSLocalNetworkUsageDescription: "Pasture for Mac uses your local network to connect to Pasture for iOS."
+        NSBonjourServices:
+          - _pasture._tcp
+    dependencies:
+      - package: Loom
+        product: Loom
+      - package: Loom
+        product: LoomKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amrith.pasture.helper
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: Sources/PastureHelper/Info.plist
