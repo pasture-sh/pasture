@@ -15,8 +15,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Xcode Version
-        run: xcodebuild -version
+      - name: Select Latest Installed Xcode
+        run: |
+          set -euo pipefail
+
+          xcode_apps=$(find /Applications -maxdepth 1 -name "Xcode*.app" -type d | sort)
+          if [[ -z "${xcode_apps}" ]]; then
+            echo "No Xcode installations found on runner."
+            exit 1
+          fi
+
+          best_path=""
+          best_version="0"
+          while IFS= read -r app; do
+            [[ -z "${app}" ]] && continue
+            version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${app}/Contents/Info.plist" 2>/dev/null || echo "0")
+            winner=$(printf "%s\n%s\n" "${best_version}" "${version}" | sort -V | tail -n1)
+            if [[ "${winner}" == "${version}" ]]; then
+              best_version="${version}"
+              best_path="${app}"
+            fi
+          done <<< "${xcode_apps}"
+
+          if [[ -z "${best_path}" ]]; then
+            echo "Failed to select an Xcode app."
+            exit 1
+          fi
+
+          echo "Selected Xcode ${best_version} at ${best_path}"
+          sudo xcode-select -s "${best_path}/Contents/Developer"
+          xcodebuild -version
+          swift --version
 
       - name: Install XcodeGen
         run: |
