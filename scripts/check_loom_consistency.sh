@@ -6,6 +6,17 @@ PROJECT_SPEC="$ROOT_DIR/project.yml"
 PROJECT_PATH="$ROOT_DIR/Pasture.xcodeproj"
 PACKAGE_RESOLVED="$ROOT_DIR/Pasture.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
+has_required_text() {
+  local pattern="$1"
+  local file="$2"
+
+  if command -v rg >/dev/null 2>&1; then
+    rg -Fq "$pattern" "$file"
+  else
+    grep -Fq "$pattern" "$file"
+  fi
+}
+
 if [[ ! -f "$PROJECT_SPEC" ]]; then
   echo "Missing project spec at $PROJECT_SPEC"
   exit 1
@@ -58,7 +69,7 @@ for required in \
   "product: LoomKit" \
   "product: LoomCloudKit" \
   "PastureCloudKitContainerIdentifier:"; do
-  if ! rg -q "$required" "$PROJECT_SPEC"; then
+  if ! has_required_text "$required" "$PROJECT_SPEC"; then
     echo "Missing Loom integration requirement in project.yml: $required"
     exit 1
   fi
