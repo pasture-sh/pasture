@@ -9,6 +9,7 @@ struct MenuBarPopoverView: View {
     let onManageModels: () -> Void
     let onClearDiagnostics: () -> Void
     @State private var showDiagnostics = false
+    private let accentColor = Color(red: 0.96, green: 0.78, blue: 0.26)
 
     var body: some View {
         ScrollView {
@@ -16,9 +17,9 @@ struct MenuBarPopoverView: View {
                 // Header
                 HStack {
                     Image(systemName: "hare.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(accentColor)
                     Text("Pasture for Mac")
-                        .font(.headline)
+                        .font(.system(.headline, design: .rounded, weight: .semibold))
                     Spacer()
                 }
 
@@ -120,19 +121,20 @@ struct MenuBarPopoverView: View {
 
                 Button("Manage Models", action: onManageModels)
                     .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .font(.subheadline)
+                    .tint(accentColor)
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
 
                 Button("Quit Pasture for Mac") {
                     NSApplication.shared.terminate(nil)
                 }
                 .foregroundStyle(.secondary)
-                .font(.footnote)
+                .font(.system(.footnote, design: .rounded))
                 Spacer()
             }
             .padding()
         }
         .frame(width: 300, height: 420)
+        .fontDesign(.rounded)
     }
 }
 

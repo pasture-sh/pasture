@@ -1,131 +1,312 @@
 import SwiftUI
+import Foundation
 
 struct EnvironmentPalette {
     let skyTop: Color
     let skyBottom: Color
+    let horizonGlow: Color
     let farLayer: Color
     let midLayer: Color
     let nearLayer: Color
+    let foregroundLayer: Color
+    let cloudTint: Color
+    let atmosphereTint: Color
+    let celestialTint: Color
     let accent: Color
     let userBubble: Color
+    let primaryTextOnAccent: Color
+    let layerCount: Int
 }
 
-enum ModelEnvironment: String, CaseIterable, Identifiable {
-    case pasture
-    case mesa
-    case alpine
-    case grove
-    case bloom
-    case tundra
-    case dusk
+enum TimeOfDay: String, Equatable {
+    case morning
+    case afternoon
+    case evening
+    case night
 
-    var id: String { rawValue }
+    static var current: TimeOfDay {
+        from(date: Date())
+    }
 
-    var palette: EnvironmentPalette {
+    static func from(date: Date, calendar: Calendar = .current) -> TimeOfDay {
+        let hour = calendar.component(.hour, from: date)
+        switch hour {
+        case 6..<12:
+            return .morning
+        case 12..<18:
+            return .afternoon
+        case 18..<21:
+            return .evening
+        default:
+            return .night
+        }
+    }
+}
+
+enum ModelComplexity: String, Equatable {
+    case small
+    case medium
+    case large
+
+    var layerCount: Int {
         switch self {
-        case .pasture:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.62, green: 0.79, blue: 0.50),
-                skyBottom: Color(red: 0.46, green: 0.68, blue: 0.37),
-                farLayer: Color(red: 0.71, green: 0.82, blue: 0.57).opacity(0.55),
-                midLayer: Color(red: 0.53, green: 0.74, blue: 0.41).opacity(0.72),
-                nearLayer: Color(red: 0.37, green: 0.57, blue: 0.29).opacity(0.9),
-                accent: Color(red: 0.95, green: 0.79, blue: 0.38),
-                userBubble: Color(red: 0.29, green: 0.52, blue: 0.26)
-            )
-
-        case .mesa:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.89, green: 0.57, blue: 0.36),
-                skyBottom: Color(red: 0.75, green: 0.42, blue: 0.27),
-                farLayer: Color(red: 0.92, green: 0.70, blue: 0.52).opacity(0.5),
-                midLayer: Color(red: 0.75, green: 0.41, blue: 0.28).opacity(0.75),
-                nearLayer: Color(red: 0.54, green: 0.27, blue: 0.20).opacity(0.92),
-                accent: Color(red: 0.98, green: 0.73, blue: 0.34),
-                userBubble: Color(red: 0.69, green: 0.31, blue: 0.22)
-            )
-
-        case .alpine:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.45, green: 0.57, blue: 0.70),
-                skyBottom: Color(red: 0.31, green: 0.42, blue: 0.56),
-                farLayer: Color(red: 0.78, green: 0.84, blue: 0.90).opacity(0.45),
-                midLayer: Color(red: 0.47, green: 0.58, blue: 0.68).opacity(0.72),
-                nearLayer: Color(red: 0.28, green: 0.35, blue: 0.47).opacity(0.92),
-                accent: Color(red: 0.86, green: 0.92, blue: 0.98),
-                userBubble: Color(red: 0.36, green: 0.47, blue: 0.62)
-            )
-
-        case .grove:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.18, green: 0.33, blue: 0.23),
-                skyBottom: Color(red: 0.12, green: 0.23, blue: 0.17),
-                farLayer: Color(red: 0.25, green: 0.45, blue: 0.31).opacity(0.42),
-                midLayer: Color(red: 0.16, green: 0.32, blue: 0.22).opacity(0.75),
-                nearLayer: Color(red: 0.09, green: 0.20, blue: 0.14).opacity(0.92),
-                accent: Color(red: 0.51, green: 0.79, blue: 0.56),
-                userBubble: Color(red: 0.15, green: 0.39, blue: 0.24)
-            )
-
-        case .bloom:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.95, green: 0.78, blue: 0.79),
-                skyBottom: Color(red: 0.87, green: 0.71, blue: 0.70),
-                farLayer: Color(red: 0.93, green: 0.86, blue: 0.78).opacity(0.45),
-                midLayer: Color(red: 0.83, green: 0.74, blue: 0.68).opacity(0.72),
-                nearLayer: Color(red: 0.69, green: 0.61, blue: 0.53).opacity(0.9),
-                accent: Color(red: 0.77, green: 0.53, blue: 0.65),
-                userBubble: Color(red: 0.74, green: 0.49, blue: 0.60)
-            )
-
-        case .tundra:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.86, green: 0.89, blue: 0.95),
-                skyBottom: Color(red: 0.73, green: 0.77, blue: 0.87),
-                farLayer: Color(red: 0.92, green: 0.94, blue: 0.98).opacity(0.52),
-                midLayer: Color(red: 0.76, green: 0.80, blue: 0.89).opacity(0.75),
-                nearLayer: Color(red: 0.60, green: 0.66, blue: 0.79).opacity(0.9),
-                accent: Color(red: 0.81, green: 0.82, blue: 0.94),
-                userBubble: Color(red: 0.55, green: 0.60, blue: 0.77)
-            )
-
-        case .dusk:
-            return EnvironmentPalette(
-                skyTop: Color(red: 0.20, green: 0.23, blue: 0.42),
-                skyBottom: Color(red: 0.14, green: 0.16, blue: 0.31),
-                farLayer: Color(red: 0.48, green: 0.37, blue: 0.34).opacity(0.38),
-                midLayer: Color(red: 0.26, green: 0.24, blue: 0.35).opacity(0.72),
-                nearLayer: Color(red: 0.14, green: 0.15, blue: 0.23).opacity(0.92),
-                accent: Color(red: 0.98, green: 0.71, blue: 0.33),
-                userBubble: Color(red: 0.46, green: 0.37, blue: 0.63)
-            )
+        case .small: return 2
+        case .medium: return 3
+        case .large: return 4
         }
     }
 
+    static func from(modelName: String?) -> ModelComplexity {
+        guard let modelName else {
+            return .medium
+        }
+
+        let name = modelName.lowercased()
+
+        if let parameterSize = extractParameterBillions(from: name) {
+            switch parameterSize {
+            case ..<5:
+                return .small
+            case ..<30:
+                return .medium
+            default:
+                return .large
+            }
+        }
+
+        if name.contains("mini") || name.contains("small") {
+            return .small
+        }
+
+        if name.contains("large") || name.contains("r1") {
+            return .large
+        }
+
+        return .medium
+    }
+
+    private static func extractParameterBillions(from modelName: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: "(\\d+)\\s*b", options: [.caseInsensitive]) else {
+            return nil
+        }
+
+        let nsRange = NSRange(modelName.startIndex..<modelName.endIndex, in: modelName)
+        let matches = regex.matches(in: modelName, options: [], range: nsRange)
+        guard let valueRange = matches
+            .compactMap({ match -> Range<String.Index>? in
+                guard match.numberOfRanges > 1 else { return nil }
+                return Range(match.range(at: 1), in: modelName)
+            })
+            .compactMap({ Int(modelName[$0]) })
+            .max()
+        else {
+            return nil
+        }
+        return valueRange
+    }
+}
+
+struct ModelEnvironment: Equatable, Identifiable {
+    let timeOfDay: TimeOfDay
+    let complexity: ModelComplexity
+    let isLateNight: Bool
+
+    var id: String {
+        "\(timeOfDay.rawValue)-\(complexity.rawValue)-\(isLateNight)"
+    }
+
+    var displayName: String {
+        timeOfDay.rawValue.capitalized
+    }
+
+    var ambience: String {
+        switch timeOfDay {
+        case .morning:
+            return "Soft warm light"
+        case .afternoon:
+            return "Bright open sky"
+        case .evening:
+            return "Golden-hour warmth"
+        case .night:
+            return "Quiet indigo calm"
+        }
+    }
+
+    var palette: EnvironmentPalette {
+        var base = Self.basePalette(for: timeOfDay, isLateNight: isLateNight)
+
+        switch complexity {
+        case .small:
+            break
+        case .medium:
+            base.skyTop = base.skyTop.adjustedHSB(hueDegrees: -2, brightnessPercent: 1.5)
+            base.skyBottom = base.skyBottom.adjustedHSB(hueDegrees: -2, brightnessPercent: 1.2)
+        case .large:
+            base.skyTop = base.skyTop.adjustedHSB(hueDegrees: -4, brightnessPercent: 3.0, saturationPercent: 3.0)
+            base.skyBottom = base.skyBottom.adjustedHSB(hueDegrees: -4, brightnessPercent: 2.5, saturationPercent: 2.5)
+            base.farLayer = base.farLayer.adjustedHSB(saturationPercent: 2.0)
+            base.midLayer = base.midLayer.adjustedHSB(saturationPercent: 2.0)
+            base.nearLayer = base.nearLayer.adjustedHSB(saturationPercent: 2.0)
+        }
+
+        return EnvironmentPalette(
+            skyTop: base.skyTop,
+            skyBottom: base.skyBottom,
+            horizonGlow: base.horizonGlow,
+            farLayer: base.farLayer,
+            midLayer: base.midLayer,
+            nearLayer: base.nearLayer,
+            foregroundLayer: base.foregroundLayer,
+            cloudTint: base.cloudTint,
+            atmosphereTint: base.atmosphereTint,
+            celestialTint: base.celestialTint,
+            accent: base.accent,
+            userBubble: base.userBubble,
+            primaryTextOnAccent: base.primaryTextOnAccent,
+            layerCount: complexity.layerCount
+        )
+    }
+
+    static let onboardingDefault = ModelEnvironment(timeOfDay: .morning, complexity: .medium, isLateNight: false)
+
+    static let pasture = onboardingDefault
+
     static func forModelName(_ modelName: String?) -> ModelEnvironment {
-        guard let normalized = modelName?.lowercased() else {
-            return .pasture
+        chat(for: modelName)
+    }
+
+    static func chat(for modelName: String?, at date: Date = Date()) -> ModelEnvironment {
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: date)
+        return ModelEnvironment(
+            timeOfDay: TimeOfDay.from(date: date, calendar: calendar),
+            complexity: ModelComplexity.from(modelName: modelName),
+            isLateNight: (0..<5).contains(hour)
+        )
+    }
+
+    private static func basePalette(for timeOfDay: TimeOfDay, isLateNight: Bool) -> (skyTop: Color, skyBottom: Color, horizonGlow: Color, farLayer: Color, midLayer: Color, nearLayer: Color, foregroundLayer: Color, cloudTint: Color, atmosphereTint: Color, celestialTint: Color, accent: Color, userBubble: Color, primaryTextOnAccent: Color) {
+        switch timeOfDay {
+        case .morning:
+            return (
+                skyTop: Color(hex: "BFD8E2"),
+                skyBottom: Color(hex: "8FB5C1"),
+                horizonGlow: Color(hex: "F7E8C8"),
+                farLayer: Color(hex: "B8C9A7"),
+                midLayer: Color(hex: "91A97D"),
+                nearLayer: Color(hex: "718D63"),
+                foregroundLayer: Color(hex: "5A7053"),
+                cloudTint: .white.opacity(0.54),
+                atmosphereTint: Color(hex: "EADAB4").opacity(0.30),
+                celestialTint: Color(hex: "FFF7E4"),
+                accent: Color(hex: "D9BC7A"),
+                userBubble: Color(hex: "617F67"),
+                primaryTextOnAccent: Color(red: 0.19, green: 0.21, blue: 0.16)
+            )
+        case .afternoon:
+            return (
+                skyTop: Color(hex: "B3CFDA"),
+                skyBottom: Color(hex: "80AAB7"),
+                horizonGlow: Color(hex: "F0E3C2"),
+                farLayer: Color(hex: "B7C4A2"),
+                midLayer: Color(hex: "92A47D"),
+                nearLayer: Color(hex: "6F8660"),
+                foregroundLayer: Color(hex: "586C52"),
+                cloudTint: .white.opacity(0.44),
+                atmosphereTint: Color(hex: "DBD8B6").opacity(0.24),
+                celestialTint: Color(hex: "FFF8EA"),
+                accent: Color(hex: "CDB77A"),
+                userBubble: Color(hex: "58725E"),
+                primaryTextOnAccent: Color(red: 0.18, green: 0.20, blue: 0.15)
+            )
+        case .evening:
+            return (
+                skyTop: Color(hex: "C7D0DA"),
+                skyBottom: Color(hex: "A4B0BE"),
+                horizonGlow: Color(hex: "E8D6B2"),
+                farLayer: Color(hex: "B2B099"),
+                midLayer: Color(hex: "91917D"),
+                nearLayer: Color(hex: "71745F"),
+                foregroundLayer: Color(hex: "595C4C"),
+                cloudTint: Color(hex: "FFF2E0").opacity(0.34),
+                atmosphereTint: Color(hex: "E5D1AF").opacity(0.24),
+                celestialTint: Color(hex: "FBF2DF"),
+                accent: Color(hex: "D3B47B"),
+                userBubble: Color(hex: "6E7965"),
+                primaryTextOnAccent: Color(red: 0.22, green: 0.20, blue: 0.16)
+            )
+        case .night:
+            return (
+                skyTop: Color(hex: isLateNight ? "162031" : "3D4B62"),
+                skyBottom: Color(hex: isLateNight ? "0D1521" : "243244"),
+                horizonGlow: Color(hex: isLateNight ? "293248" : "697485"),
+                farLayer: Color(hex: isLateNight ? "3D463D" : "576255"),
+                midLayer: Color(hex: isLateNight ? "313A31" : "465041"),
+                nearLayer: Color(hex: isLateNight ? "262D26" : "343C30"),
+                foregroundLayer: Color(hex: isLateNight ? "1A201A" : "272D25"),
+                cloudTint: Color(hex: "E3E7F3").opacity(isLateNight ? 0.14 : 0.24),
+                atmosphereTint: Color(hex: isLateNight ? "222C3D" : "4B5770").opacity(isLateNight ? 0.28 : 0.24),
+                celestialTint: Color(hex: "E7EBF7"),
+                accent: Color(hex: "CBB98B"),
+                userBubble: Color(hex: isLateNight ? "4A574A" : "556557"),
+                primaryTextOnAccent: Color(red: 0.18, green: 0.17, blue: 0.13)
+            )
+        }
+    }
+}
+
+private extension Color {
+    init(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var value: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&value)
+
+        let red, green, blue: UInt64
+        switch cleaned.count {
+        case 6:
+            red = (value >> 16) & 0xFF
+            green = (value >> 8) & 0xFF
+            blue = value & 0xFF
+        default:
+            red = 0
+            green = 0
+            blue = 0
         }
 
-        if normalized.contains("coder") || normalized.contains("codellama") {
-            return .grove
-        }
-        if normalized.contains("llama") {
-            return .mesa
-        }
-        if normalized.contains("mistral") || normalized.contains("mixtral") {
-            return .alpine
-        }
-        if normalized.contains("gemma") {
-            return .bloom
-        }
-        if normalized.contains("phi") {
-            return .tundra
-        }
-        if normalized.contains("deepseek") {
-            return .dusk
+        self.init(
+            red: Double(red) / 255.0,
+            green: Double(green) / 255.0,
+            blue: Double(blue) / 255.0
+        )
+    }
+
+    func adjustedHSB(hueDegrees: Double = 0, brightnessPercent: Double = 0, saturationPercent: Double = 0) -> Color {
+#if canImport(UIKit)
+        let uiColor = UIColor(self)
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        guard uiColor.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+            return self
         }
 
-        return .pasture
+        let hueDelta = CGFloat(hueDegrees / 360.0)
+        let newHue = (hue + hueDelta).truncatingRemainder(dividingBy: 1)
+        let clampedHue = newHue < 0 ? newHue + 1 : newHue
+        let newSaturation = min(max(saturation + CGFloat(saturationPercent / 100.0), 0), 1)
+        let newBrightness = min(max(brightness + CGFloat(brightnessPercent / 100.0), 0), 1)
+        return Color(
+            UIColor(
+                hue: clampedHue,
+                saturation: newSaturation,
+                brightness: newBrightness,
+                alpha: alpha
+            )
+        )
+#else
+        return self
+#endif
     }
 }

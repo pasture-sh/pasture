@@ -28,5 +28,7 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pasture for Mac uses your local network to connect to Pasture for iOS.</string>
+	<key>PastureCloudKitContainerIdentifier</key>
+	<string></string>
 </dict>
 </plist>

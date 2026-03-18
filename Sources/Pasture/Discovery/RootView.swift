@@ -34,18 +34,6 @@ struct RootView: View {
             ChatView()
         } else if hasCompletedOnboarding && connection.hasEverConnected {
             ChatView()
-                .overlay(alignment: .top) {
-                    if let recoveryBannerMessage {
-                        ConnectionRecoveryBanner(
-                            message: recoveryBannerMessage,
-                            showsRetry: showsRecoveryRetry
-                        ) {
-                            Task { await connection.startDiscovery() }
-                        }
-                        .padding(.top, 12)
-                        .padding(.horizontal, 12)
-                    }
-                }
                 .task {
                     if case .connected = connection.state {
                         return
@@ -95,29 +83,6 @@ struct RootView: View {
         }
     }
 
-    private var recoveryBannerMessage: String? {
-        switch connection.state {
-        case .connected:
-            return nil
-        case .discovering:
-            return "Looking for your Mac…"
-        case .connecting(let peerName):
-            return "Connecting to \(peerName)…"
-        case .reconnecting(let peerName, let attempt):
-            let target = peerName ?? "your Mac"
-            return "Reconnecting to \(target)… (Attempt \(attempt))"
-        case .failed(let message):
-            return message
-        }
-    }
-
-    private var showsRecoveryRetry: Bool {
-        if case .failed = connection.state {
-            return true
-        }
-        return false
-    }
-
     private func handleConnected(peerName: String) {
         connectionToastMessage = "Connected to \(peerName)"
 
@@ -153,6 +118,7 @@ private struct OnboardingFlowView: View {
     let onGetStarted: () -> Void
     let onContinueToPairing: () -> Void
     let onRetry: () -> Void
+    private let palette = ModelEnvironment.onboardingDefault.palette
 
     var body: some View {
         ZStack {
@@ -160,53 +126,69 @@ private struct OnboardingFlowView: View {
 
             switch step {
             case .welcome:
-                WelcomeStepView(onGetStarted: onGetStarted)
+                WelcomeStepView(palette: palette, onGetStarted: onGetStarted)
             case .installHelper:
-                InstallHelperStepView(onContinue: onContinueToPairing)
+                InstallHelperStepView(palette: palette, onContinue: onContinueToPairing)
             case .waiting:
                 WaitingForMacStepView(
                     state: connectionState,
+                    palette: palette,
                     onRetry: onRetry
                 )
             }
         }
+        .fontDesign(.rounded)
     }
 }
 
 private struct BackgroundView: View {
     var body: some View {
-        EnvironmentBackground(environment: .pasture)
+        EnvironmentBackground(environment: .onboardingDefault)
     }
 }
 
 private struct WelcomeStepView: View {
+    let palette: EnvironmentPalette
     let onGetStarted: () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "hare.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(.white)
+            PasturePresenceGlyph(palette: palette)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
+                Text("LOCAL AI, MADE CALM")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .tracking(1.6)
+                    .foregroundStyle(.white.opacity(0.62))
+
                 Text("Pasture")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
 
-                Text("Your AI. At home.")
-                    .font(.system(.title3, design: .rounded, weight: .medium))
+                Text("Your AI.\nAt home.")
+                    .font(.system(size: 28, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.92))
+                    .multilineTextAlignment(.center)
+
+                Text("A quieter, friendlier way to use Ollama from your iPhone.")
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 2)
+                    .padding(.horizontal, 36)
             }
 
             Spacer()
 
-            Button("Get started", action: onGetStarted)
-                .buttonStyle(.borderedProminent)
-                .tint(.white)
-                .foregroundStyle(Color(red: 0.21, green: 0.44, blue: 0.19))
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+            OnboardingPrimaryCTA(
+                title: "Get started",
+                palette: palette,
+                reduceTransparency: reduceTransparency,
+                action: onGetStarted
+            )
                 .padding(.horizontal, 24)
                 .padding(.bottom, 30)
         }
@@ -214,64 +196,85 @@ private struct WelcomeStepView: View {
 }
 
 private struct InstallHelperStepView: View {
+    let palette: EnvironmentPalette
     let onContinue: () -> Void
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 20) {
             Spacer()
 
-            HStack(spacing: 18) {
+            HStack(spacing: 16) {
                 Image(systemName: "desktopcomputer")
-                    .font(.system(size: 38, weight: .semibold))
-                Image(systemName: "arrow.left.and.right.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                Image(systemName: "iphone")
                     .font(.system(size: 34, weight: .semibold))
+                Image(systemName: "arrow.left.and.right.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                Image(systemName: "iphone")
+                    .font(.system(size: 30, weight: .semibold))
             }
             .foregroundStyle(.white.opacity(0.95))
 
-            Text("First, open Pasture for Mac")
-                .font(.system(.title3, design: .rounded, weight: .semibold))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            VStack(spacing: 10) {
+                Text("Open Pasture on your Mac")
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
 
-            Text("No accounts. No IP addresses. Keep this screen open while your Mac appears automatically.")
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
+                Text("No accounts, IP addresses, or setup rituals. Keep this screen open and your Mac will appear automatically.")
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                onboardingNote("Same Wi-Fi on both devices")
+                onboardingNote("Ollama installed on your Mac")
+                onboardingNote("Pasture for Mac left open while pairing")
+            }
+            .padding(18)
+            .modifier(OnboardingCardModifier())
+            .padding(.horizontal, 24)
 
             Spacer()
 
             if let helperDownloadURL {
-                Button {
+                OnboardingPrimaryCTA(
+                    title: "Get Pasture for Mac",
+                    palette: palette,
+                    reduceTransparency: reduceTransparency
+                ) {
                     openURL(helperDownloadURL)
-                } label: {
-                    Text("Get Pasture for Mac")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.white)
-                .foregroundStyle(Color(red: 0.21, green: 0.44, blue: 0.19))
-                .font(.system(.headline, design: .rounded, weight: .semibold))
                 .padding(.horizontal, 24)
             } else {
-                Text("Pasture for Mac is currently distributed privately. Open it on your Mac, then come back and continue.")
+                Text("Pasture for Mac is currently distributed privately. Open it on your Mac, then continue here.")
                     .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 4)
+                    .padding(.horizontal, 28)
             }
 
             Button("Pasture for Mac is open", action: onContinue)
                 .buttonStyle(.plain)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.94))
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.72))
                 .padding(.horizontal, 24)
                 .padding(.bottom, 30)
+        }
+    }
+
+    private func onboardingNote(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(.white.opacity(0.22))
+                .frame(width: 6, height: 6)
+            Text(text)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.82))
+            Spacer()
         }
     }
 
@@ -292,28 +295,30 @@ private struct InstallHelperStepView: View {
 }
 
 private struct WaitingForMacStepView: View {
+    @EnvironmentObject private var connection: ConnectionManager
     let state: ConnectionManager.ConnectionState
+    let palette: EnvironmentPalette
     let onRetry: () -> Void
 
     @State private var showTroubleshooting = false
+    @State private var showDiagnostics = false
+    @State private var llamaBreathe = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(spacing: 18) {
             Spacer()
 
-            Image(systemName: "hare.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.white.opacity(0.95))
+            PasturePresenceGlyph(palette: palette)
+                .opacity(llamaOpacity)
+                .scaleEffect(llamaScale)
 
-            Text(statusTitle)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            statusCapsule
 
             if isLoading {
                 ProgressView()
                     .tint(.white)
+                    .scaleEffect(0.9)
             }
 
             if let errorMessage {
@@ -329,12 +334,33 @@ private struct WaitingForMacStepView: View {
                     .padding(.horizontal, 20)
             }
 
+            if !connection.availableHelpers.isEmpty {
+                AvailableMacsCard(connection: connection)
+                    .padding(.horizontal, 20)
+            }
+
+            Button(showDiagnostics ? "Hide diagnostics" : "Show diagnostics") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showDiagnostics.toggle()
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.8))
+
+            if showDiagnostics {
+                WaitingDiagnosticsCard(connection: connection)
+                    .padding(.horizontal, 20)
+            }
+
             if errorMessage != nil {
-                Button("Try again", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.white)
-                    .foregroundStyle(Color(red: 0.21, green: 0.44, blue: 0.19))
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                OnboardingPrimaryCTA(
+                    title: "Try again",
+                    palette: palette,
+                    reduceTransparency: reduceTransparency,
+                    action: onRetry
+                )
+                .padding(.horizontal, 24)
                     .padding(.top, 4)
             }
 
@@ -344,6 +370,12 @@ private struct WaitingForMacStepView: View {
             showTroubleshooting = false
             try? await Task.sleep(nanoseconds: 60_000_000_000)
             showTroubleshooting = true
+        }
+        .onAppear {
+            startLlamaAnimationIfNeeded()
+        }
+        .onChange(of: state) { _, _ in
+            startLlamaAnimationIfNeeded()
         }
     }
 
@@ -379,6 +411,186 @@ private struct WaitingForMacStepView: View {
     private var shouldShowChecklist: Bool {
         showTroubleshooting || errorMessage != nil
     }
+
+    @ViewBuilder
+    private var statusCapsule: some View {
+        Text(statusTitle)
+            .font(.system(size: 15, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.84))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .modifier(OnboardingStatusCapsuleModifier(palette: palette, reduceTransparency: reduceTransparency))
+            .padding(.horizontal, 24)
+    }
+
+    private var llamaOpacity: Double {
+        if case .failed = state { return 0.55 }
+        return 1.0
+    }
+
+    private var llamaScale: CGFloat {
+        guard llamaShouldAnimate else { return 1.0 }
+        return llamaBreathe ? 1.02 : 0.98
+    }
+
+    private var llamaShouldAnimate: Bool {
+        switch state {
+        case .discovering, .connecting, .reconnecting:
+            return true
+        case .failed, .connected:
+            return false
+        }
+    }
+
+    private var llamaDuration: Double {
+        switch state {
+        case .connecting:
+            return 1.4
+        case .discovering, .reconnecting:
+            return 2.4
+        case .failed, .connected:
+            return 0
+        }
+    }
+
+    private func startLlamaAnimationIfNeeded() {
+        guard llamaShouldAnimate else {
+            llamaBreathe = false
+            return
+        }
+        llamaBreathe = false
+        withAnimation(.easeInOut(duration: llamaDuration).repeatForever(autoreverses: true)) {
+            llamaBreathe = true
+        }
+    }
+}
+
+private struct AvailableMacsCard: View {
+    let connection: ConnectionManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Visible Macs")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.white)
+
+            ForEach(connection.availableHelpers) { peer in
+                Button {
+                    Task { await connection.connectToHelper(peerID: peer.id) }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: peer.deviceType.systemImage)
+                            .foregroundStyle(.white.opacity(0.92))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(peer.name)
+                                .font(.system(.body, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(peer.isNearby ? "Nearby" : "Reachable")
+                                .font(.system(.caption, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                        Spacer()
+                        if connection.connectedPeerID == peer.id {
+                            Text("Connected")
+                                .font(.system(.caption, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .foregroundStyle(.white.opacity(0.82))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .modifier(OnboardingCardModifier())
+    }
+}
+
+private struct WaitingDiagnosticsCard: View {
+    let connection: ConnectionManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Discovery diagnostics")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.white)
+
+            diagnosticsRow("Discovery starts", "\(connection.diagnostics.discoveryStarts)")
+            diagnosticsRow("Peer refreshes", "\(connection.diagnostics.peerRefreshes)")
+            diagnosticsRow("Visible peers", "\(connection.diagnostics.visiblePeerCount)")
+            diagnosticsRow("Visible helpers", "\(connection.diagnostics.visibleHelperCount)")
+            diagnosticsRow("Connect attempts", "\(connection.diagnostics.connectAttempts)")
+            diagnosticsRow("Connect successes", "\(connection.diagnostics.connectSuccesses)")
+
+            if let loomRuntimeError = connection.diagnostics.loomRuntimeError,
+               !loomRuntimeError.isEmpty {
+                Text("Loom runtime: \(loomRuntimeError)")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.orange.opacity(0.95))
+            }
+
+            if let peerSummary = connection.diagnostics.lastPeerSnapshotSummary,
+               !peerSummary.isEmpty {
+                Text(peerSummary)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
+
+            let events = Array(connection.diagnostics.recentEvents.suffix(6).reversed())
+            if !events.isEmpty {
+                Divider()
+                    .overlay(.white.opacity(0.12))
+
+                ForEach(events) { event in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("[\(event.level.rawValue.uppercased())] \(Self.timeFormatter.string(from: event.timestamp))")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(eventColor(for: event.level))
+                        Text(event.message)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .modifier(OnboardingCardModifier())
+    }
+
+    private func diagnosticsRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.white.opacity(0.8))
+            Spacer()
+            Text(value)
+                .font(.system(.footnote, design: .rounded, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private func eventColor(for level: ConnectionDiagnosticLevel) -> Color {
+        switch level {
+        case .info:
+            return .blue
+        case .warning:
+            return .orange
+        case .error:
+            return .red
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 }
 
 private struct TroubleshootingChecklist: View {
@@ -394,7 +606,7 @@ private struct TroubleshootingChecklist: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .modifier(OnboardingCardModifier())
     }
 }
 
@@ -427,36 +639,10 @@ private struct ConnectionToast: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: Capsule())
-    }
-}
-
-private struct ConnectionRecoveryBanner: View {
-    let message: String
-    let showsRetry: Bool
-    let onRetry: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: showsRetry ? "wifi.exclamationmark" : "arrow.trianglehead.2.clockwise")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(showsRetry ? .orange : .blue)
-
-            Text(message)
-                .font(.system(.footnote, design: .rounded, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-
-            Spacer(minLength: 6)
-
-            if showsRetry {
-                Button("Try again", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            }
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.18), lineWidth: 0.5)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule())
     }
 }
 
@@ -467,18 +653,14 @@ struct DiscoveringView: View {
         ZStack {
             BackgroundView()
 
-            VStack(spacing: 24) {
-                Image(systemName: "hare.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(.white)
-
-                Text("Pasture")
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                    .foregroundStyle(.white)
+            VStack(spacing: 18) {
+                PasturePresenceGlyph(palette: ModelEnvironment.onboardingDefault.palette)
 
                 Text(status)
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.84))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
 
                 ProgressView()
                     .tint(.white)
@@ -495,22 +677,120 @@ struct ErrorView: View {
         ZStack {
             BackgroundView()
 
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 48))
+                    .font(.system(size: 32))
                     .foregroundStyle(.white)
 
                 Text(message)
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
-                Button("Try Again", action: retry)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.white)
-                    .foregroundStyle(.green)
+                OnboardingPrimaryCTA(
+                    title: "Try again",
+                    palette: ModelEnvironment.onboardingDefault.palette,
+                    reduceTransparency: false,
+                    action: retry
+                )
+                .padding(.horizontal, 40)
             }
         }
+    }
+}
+
+private struct PasturePresenceGlyph: View {
+    let palette: EnvironmentPalette
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.white.opacity(0.12))
+                .frame(width: 112, height: 112)
+
+            Circle()
+                .stroke(.white.opacity(0.14), lineWidth: 1)
+                .frame(width: 112, height: 112)
+
+            Image(systemName: "hare.fill")
+                .font(.system(size: 44, weight: .regular))
+                .foregroundStyle(.white.opacity(0.94))
+        }
+    }
+}
+
+private struct OnboardingPrimaryCTA: View {
+    let title: String
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(.headline, design: .rounded, weight: .bold))
+                .foregroundStyle(textColor)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .modifier(OnboardingPrimaryCTAModifier(palette: palette, reduceTransparency: reduceTransparency))
+    }
+
+    private var textColor: Color {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            return .white
+        }
+        return palette.userBubble
+    }
+}
+
+private struct OnboardingPrimaryCTAModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular.tint(palette.userBubble.opacity(0.38)).interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            content
+                .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(.white.opacity(0.22), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct OnboardingStatusCapsuleModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content
+                .background(palette.nearLayer.opacity(0.72), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct OnboardingCardModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 0.5)
+            }
     }
 }

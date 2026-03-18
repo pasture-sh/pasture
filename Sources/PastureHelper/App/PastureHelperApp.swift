@@ -17,11 +17,8 @@ struct PastureHelperApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let loomContainer = try! LoomContainer(
-        for: LoomContainerConfiguration(
-            serviceType: "_pasture._tcp",
-            serviceName: Host.current().localizedName ?? "Pasture for Mac",
-            trust: .sameAccountAutoTrust,
-            advertisementMetadata: ["service": "pasture"]
+        for: PastureLoomRuntimeConfiguration.makeConfiguration(
+            serviceName: Host.current().localizedName ?? "Pasture for Mac"
         )
     )
     private var menuBarController: MenuBarController?

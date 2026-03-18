@@ -23,12 +23,14 @@ final class ConnectionManager: ObservableObject {
     private var discoveryTask: Task<Void, Never>?
     private var peerRefreshTask: Task<Void, Never>?
     private var listenTask: Task<Void, Never>?
+    private var connectionEventTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = ConnectionRuntimePolicy.maxReconnectAttempts
     private let requestTimeoutNanoseconds = ConnectionRuntimePolicy.requestTimeoutNanoseconds
     private var lastConnectedPeerName: String?
     private var preferredPeerID: UUID?
+    private var inFlightModelFetch: Task<[OllamaModel], Error>?
 
     private var pendingResponses: [String: CheckedContinuation<ProxyResponse, Error>] = [:]
     private var responseTimeoutTasks: [String: Task<Void, Never>] = [:]
@@ -58,12 +60,16 @@ final class ConnectionManager: ObservableObject {
             self.preferredPeerID = UUID(uuidString: rawPeerID)
         }
         recordEvent("Connection manager initialized.")
+        if let runtimeWarning = PastureLoomRuntimeConfiguration.runtimeWarning() {
+            recordEvent(runtimeWarning, level: .warning)
+        }
     }
 
     deinit {
         discoveryTask?.cancel()
         peerRefreshTask?.cancel()
         listenTask?.cancel()
+        connectionEventTask?.cancel()
         reconnectTask?.cancel()
         for task in responseTimeoutTasks.values {
             task.cancel()
@@ -89,9 +95,8 @@ final class ConnectionManager: ObservableObject {
 
         do {
             try await loomContext.start()
-            await loomContext.refreshPeers()
             state = .discovering
-            availableHelpers = helperPeers()
+            await refreshAndSyncPeers(source: "startup")
             startPeerRefreshLoopIfNeeded()
             recordEvent("Discovery started with \(availableHelpers.count) helper(s) visible.")
 
@@ -118,9 +123,7 @@ final class ConnectionManager: ObservableObject {
         defer { peerRefreshTask = nil }
 
         while !Task.isCancelled {
-            await loomContext.refreshPeers()
-            availableHelpers = helperPeers()
-            diagnostics.peerRefreshes += 1
+            await refreshAndSyncPeers(source: "peer-refresh-loop")
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
     }
@@ -129,14 +132,14 @@ final class ConnectionManager: ObservableObject {
         defer { discoveryTask = nil }
 
         while !Task.isCancelled {
-            let helpers = helperPeers()
-            availableHelpers = helpers
+            syncPeersFromContext(source: "discovery-loop")
+            let helpers = availableHelpers
             if let target = autoConnectTarget(from: helpers) {
                 await connect(to: target)
                 return
             }
 
-            await loomContext.refreshPeers()
+            await refreshAndSyncPeers(source: "discovery-loop")
             try? await Task.sleep(nanoseconds: 400_000_000)
         }
     }
@@ -144,8 +147,8 @@ final class ConnectionManager: ObservableObject {
     private func helperPeers() -> [LoomPeerSnapshot] {
         loomContext.peers
             .filter {
-                $0.deviceType == .mac
-                    && $0.advertisement.metadata["service"] == "pasture"
+                let isAcceptableDeviceType = $0.deviceType == .mac || $0.deviceType == .unknown
+                return isAcceptableDeviceType
             }
             .sorted { lhs, rhs in
                 lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
@@ -186,6 +189,10 @@ final class ConnectionManager: ObservableObject {
             await activeConnection.disconnect()
             connection = nil
             connectedPeerID = nil
+            listenTask?.cancel()
+            listenTask = nil
+            connectionEventTask?.cancel()
+            connectionEventTask = nil
             finishActiveStreams()
             failPendingResponses(with: ProxyError.notConnected)
             diagnostics.disconnects += 1
@@ -204,6 +211,7 @@ final class ConnectionManager: ObservableObject {
             UserDefaults.standard.set(true, forKey: DefaultsKeys.hasEverConnected)
             reconnectAttempt = 0
             startListening(on: newConnection)
+            startMonitoringConnectionEvents(on: newConnection)
             diagnostics.connectSuccesses += 1
             recordEvent("Connected to \(peer.name).")
 
@@ -232,10 +240,25 @@ final class ConnectionManager: ObservableObject {
 
             let expectedConnectionID = await activeConnection.id
             for await data in activeConnection.messages {
-                await self.processIncomingData(data)
+                self.processIncomingData(data)
             }
 
             await self.connectionDidEnd(expectedConnectionID: expectedConnectionID)
+        }
+    }
+
+    private func startMonitoringConnectionEvents(on activeConnection: LoomConnectionHandle) {
+        connectionEventTask?.cancel()
+        connectionEventTask = Task { [weak self] in
+            guard let self else { return }
+
+            let expectedConnectionID = await activeConnection.id
+            for await event in activeConnection.events {
+                if case .disconnected = event {
+                    await self.connectionDidEnd(expectedConnectionID: expectedConnectionID)
+                    return
+                }
+            }
         }
     }
 
@@ -302,6 +325,10 @@ final class ConnectionManager: ObservableObject {
 
         connection = nil
         connectedPeerID = nil
+        listenTask?.cancel()
+        listenTask = nil
+        connectionEventTask?.cancel()
+        connectionEventTask = nil
         finishActiveStreams()
         failPendingResponses(with: ProxyError.notConnected)
         diagnostics.disconnects += 1
@@ -311,14 +338,13 @@ final class ConnectionManager: ObservableObject {
     }
 
     func refreshAvailableHelpers() async {
-        await loomContext.refreshPeers()
-        availableHelpers = helperPeers()
+        await refreshAndSyncPeers(source: "manual-refresh")
         recordEvent("Manual helper refresh found \(availableHelpers.count) helper(s).")
     }
 
     func connectToHelper(peerID: UUID) async {
-        let currentHelpers = helperPeers()
-        availableHelpers = currentHelpers
+        syncPeersFromContext(source: "manual-connect")
+        let currentHelpers = availableHelpers
 
         guard let target = currentHelpers.first(where: { $0.id == peerID }) else {
             state = .failed("That Mac is no longer available. Please refresh and try again.")
@@ -332,13 +358,42 @@ final class ConnectionManager: ObservableObject {
     // MARK: - API
 
     func fetchModels() async throws {
-        let response = try await sendRequest(
-            ProxyRequest(id: UUID().uuidString, type: .tags)
-        )
-        installedModels = (response.models ?? []).sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        let task: Task<[OllamaModel], Error>
+        let createdNewTask: Bool
+
+        if let inFlightModelFetch {
+            task = inFlightModelFetch
+            createdNewTask = false
+            recordEvent("Reusing in-flight model fetch.")
+        } else {
+            let newTask = Task { @MainActor [weak self] () throws -> [OllamaModel] in
+                guard let self else { throw ProxyError.notConnected }
+                let response = try await self.sendRequest(
+                    ProxyRequest(id: UUID().uuidString, type: .tags)
+                )
+                return (response.models ?? []).sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+            }
+            inFlightModelFetch = newTask
+            task = newTask
+            createdNewTask = true
         }
-        recordEvent("Fetched \(installedModels.count) installed model(s).")
+
+        do {
+            let models = try await task.value
+            installedModels = models
+            recordEvent("Fetched \(installedModels.count) installed model(s).")
+        } catch {
+            if createdNewTask {
+                inFlightModelFetch = nil
+            }
+            throw error
+        }
+
+        if createdNewTask {
+            inFlightModelFetch = nil
+        }
     }
 
     func delete(model: String) async throws {
@@ -372,6 +427,7 @@ final class ConnectionManager: ObservableObject {
                 } catch {
                     self.chatContinuations.removeValue(forKey: id)
                     self.recordError("Failed to send chat request: \(error.localizedDescription)")
+                    await self.handleSendFailure(error, on: activeConnection, context: "chat")
                     continuation.finish(throwing: error)
                 }
             }
@@ -411,6 +467,7 @@ final class ConnectionManager: ObservableObject {
                 } catch {
                     self.pullContinuations.removeValue(forKey: id)
                     self.recordError("Failed to send pull request: \(error.localizedDescription)")
+                    await self.handleSendFailure(error, on: activeConnection, context: "pull")
                     continuation.finish(throwing: error)
                 }
             }
@@ -449,6 +506,7 @@ final class ConnectionManager: ObservableObject {
                     try await activeConnection.send(request)
                 } catch {
                     self.cancelRequestTimeout(for: request.id)
+                    await self.handleSendFailure(error, on: activeConnection, context: request.type.rawValue)
                     if let pending = self.pendingResponses.removeValue(forKey: request.id) {
                         self.recordError("Failed to send request \(request.type.rawValue): \(error.localizedDescription)")
                         pending.resume(throwing: error)
@@ -549,9 +607,81 @@ final class ConnectionManager: ObservableObject {
     private func sendCancelRequest(for requestID: String) async {
         guard let activeConnection = connection else { return }
         let cancelRequest = ProxyRequest.cancelRequest(targetRequestID: requestID)
-        try? await activeConnection.send(cancelRequest)
-        diagnostics.requestsSent += 1
-        recordEvent("Sent cancel control request for \(requestID).")
+        do {
+            try await activeConnection.send(cancelRequest)
+            diagnostics.requestsSent += 1
+            recordEvent("Sent cancel control request for \(requestID).")
+        } catch {
+            recordError("Failed to send cancel request for \(requestID): \(error.localizedDescription)")
+            await handleSendFailure(error, on: activeConnection, context: "cancel")
+        }
+    }
+
+    private func handleSendFailure(
+        _ error: Error,
+        on activeConnection: LoomConnectionHandle,
+        context: String
+    ) async {
+        let nsError = error as NSError
+        let isSocketDisconnected =
+            nsError.domain == "Network.NWError" &&
+            nsError.code == 57
+
+        guard isSocketDisconnected else { return }
+
+        recordEvent(
+            "Detected closed Loom socket while sending \(context). Triggering reconnect.",
+            level: .warning
+        )
+
+        let connectionID = await activeConnection.id
+        await connectionDidEnd(expectedConnectionID: connectionID)
+    }
+
+    private func refreshAndSyncPeers(source: String) async {
+        await loomContext.refreshPeers()
+        diagnostics.peerRefreshes += 1
+
+        // LoomContext applies snapshot updates asynchronously. A short delay avoids
+        // reading the previous peer set immediately after requesting a refresh.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        syncPeersFromContext(source: source)
+    }
+
+    private func syncPeersFromContext(source: String) {
+        let allPeers = loomContext.peers.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        let helpers = helperPeers()
+
+        availableHelpers = helpers
+        diagnostics.visiblePeerCount = allPeers.count
+        diagnostics.visibleHelperCount = helpers.count
+
+        let peerSummary = summarizePeers(allPeers)
+        if peerSummary != diagnostics.lastPeerSnapshotSummary {
+            diagnostics.lastPeerSnapshotSummary = peerSummary
+            recordEvent("Peer snapshot (\(source)): \(peerSummary)")
+        }
+
+        let loomError = loomContext.lastError?.message
+        if loomError != diagnostics.loomRuntimeError {
+            diagnostics.loomRuntimeError = loomError
+            if let loomError {
+                recordEvent("Loom runtime warning (\(source)): \(loomError)", level: .warning)
+            }
+        }
+    }
+
+    private func summarizePeers(_ peers: [LoomPeerSnapshot]) -> String {
+        guard !peers.isEmpty else { return "none" }
+
+        return peers.map { peer in
+            let sources = peer.sources.map(\.rawValue).sorted().joined(separator: "+")
+            let service = peer.advertisement.metadata["service"] ?? "-"
+            return "\(peer.name) [type=\(peer.deviceType.rawValue), nearby=\(peer.isNearby), service=\(service), sources=\(sources)]"
+        }
+        .joined(separator: " | ")
     }
 
     func clearDiagnostics() {
@@ -603,6 +733,8 @@ struct ConnectionDiagnosticEvent: Identifiable, Equatable, Sendable {
 struct ConnectionDiagnostics: Equatable, Sendable {
     var discoveryStarts = 0
     var peerRefreshes = 0
+    var visiblePeerCount = 0
+    var visibleHelperCount = 0
     var connectAttempts = 0
     var connectSuccesses = 0
     var reconnectSchedules = 0
@@ -615,6 +747,8 @@ struct ConnectionDiagnostics: Equatable, Sendable {
     var remoteErrors = 0
     var chatStreamCancellations = 0
     var pullStreamCancellations = 0
+    var loomRuntimeError: String?
+    var lastPeerSnapshotSummary: String?
     var lastError: String?
     var lastEventAt: Date?
     var recentEvents: [ConnectionDiagnosticEvent] = []

@@ -9,11 +9,8 @@ struct PastureApp: App {
 
     init() {
         let container = try! LoomContainer(
-            for: LoomContainerConfiguration(
-                serviceType: "_pasture._tcp",
-                serviceName: UIDevice.current.name,
-                trust: .sameAccountAutoTrust,
-                advertisementMetadata: ["service": "pasture"]
+            for: PastureLoomRuntimeConfiguration.makeConfiguration(
+                serviceName: UIDevice.current.name
             )
         )
         self.loomContainer = container

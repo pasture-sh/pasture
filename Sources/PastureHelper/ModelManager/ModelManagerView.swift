@@ -4,6 +4,7 @@ struct ModelManagerView: View {
     @StateObject private var viewModel = ModelManagerViewModel()
     @State private var selectedTab: Tab = .library
     @State private var downloadTask: Task<Void, Never>?
+    private let accentColor = Color(red: 0.96, green: 0.78, blue: 0.26)
 
     enum Tab: String, CaseIterable, Identifiable {
         case library = "Library"
@@ -28,6 +29,7 @@ struct ModelManagerView: View {
             if let activeDownload = viewModel.activeDownload {
                 ActiveDownloadBanner(
                     state: activeDownload,
+                    accentColor: accentColor,
                     onCancel: cancelActiveDownload
                 )
                     .padding(.horizontal, 20)
@@ -52,12 +54,13 @@ struct ModelManagerView: View {
                         startDownload(model)
                     }
                 case .installed:
-                    InstalledModelsTab(viewModel: viewModel)
+                    InstalledModelsTab(viewModel: viewModel, accentColor: accentColor)
                 }
             }
         }
         .frame(minWidth: 680, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
+        .fontDesign(.rounded)
         .task {
             await viewModel.refreshInstalledModels()
         }
@@ -70,9 +73,9 @@ struct ModelManagerView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Pasture for Mac")
-                    .font(.title2.weight(.semibold))
+                    .font(.system(.title2, design: .rounded, weight: .semibold))
                 Text("Manage Ollama models without Terminal.")
-                    .font(.subheadline)
+                    .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -81,6 +84,7 @@ struct ModelManagerView: View {
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
+            .tint(accentColor)
             .keyboardShortcut("r", modifiers: .command)
         }
         .padding(.horizontal, 20)
@@ -115,7 +119,9 @@ private struct CuratedLibraryTab: View {
                     CuratedModelRow(
                         model: model,
                         isInstalled: viewModel.isInstalled(model),
-                        isDownloading: viewModel.activeDownload?.modelID == model.id
+                        isDownloading: viewModel.activeDownload?.modelID == model.id,
+                        accentColor: Color(red: 0.96, green: 0.78, blue: 0.26),
+                        cardColor: Color(red: 0.96, green: 0.94, blue: 0.86).opacity(0.3)
                     ) {
                         onDownload(model)
                     }
@@ -128,6 +134,7 @@ private struct CuratedLibraryTab: View {
 
 private struct InstalledModelsTab: View {
     @ObservedObject var viewModel: ModelManagerViewModel
+    let accentColor: Color
 
     var body: some View {
         Group {
@@ -169,6 +176,7 @@ private struct InstalledModelsTab: View {
                             }
                         }
                         .disabled(viewModel.deletingModelName != nil)
+                        .tint(accentColor)
                     }
                     .padding(.vertical, 4)
                 }
@@ -191,6 +199,8 @@ private struct CuratedModelRow: View {
     let model: CuratedModel
     let isInstalled: Bool
     let isDownloading: Bool
+    let accentColor: Color
+    let cardColor: Color
     let onDownload: () -> Void
 
     var body: some View {
@@ -215,10 +225,15 @@ private struct CuratedModelRow: View {
 
             Button(buttonTitle, action: onDownload)
                 .buttonStyle(.borderedProminent)
+                .tint(accentColor)
                 .disabled(isInstalled || isDownloading)
         }
         .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(cardColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.white.opacity(0.2), lineWidth: 0.5)
+        }
     }
 
     private var buttonTitle: String {
@@ -233,15 +248,17 @@ private struct ModelTag: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.medium))
+            .font(.system(size: 10, weight: .medium, design: .rounded))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .background(.white.opacity(0.12), in: Capsule())
+            .foregroundStyle(.primary.opacity(0.8))
     }
 }
 
 private struct ActiveDownloadBanner: View {
     let state: ModelDownloadState
+    let accentColor: Color
     let onCancel: () -> Void
 
     var body: some View {
@@ -267,6 +284,6 @@ private struct ActiveDownloadBanner: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

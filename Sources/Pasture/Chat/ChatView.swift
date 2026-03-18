@@ -8,24 +8,30 @@ import UIKit
 struct ChatView: View {
     @EnvironmentObject var connection: ConnectionManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingSettings = false
     @State private var isShowingNewChatConfirmation = false
+    @State private var chatEnvironment = ModelEnvironment.chat(for: nil)
+    @State private var hasInitializedTheme = false
 
     var body: some View {
-        ZStack {
-            EnvironmentBackground(environment: currentEnvironment)
-                .id(currentEnvironment.id)
+        ZStack(alignment: .top) {
+            EnvironmentBackground(environment: backgroundEnvironment)
+                .id(backgroundEnvironment.id)
                 .transition(.opacity)
 
             if viewModel.isLoadingModels {
-                LoadingModelsView()
+                LoadingModelsView(palette: backgroundEnvironment.palette)
             } else if viewModel.needsModelSetup {
                 FirstModelSetupView(
                     models: CuratedModelLibrary.recommended,
                     installedModelNames: viewModel.installedModelNames,
                     activeDownload: viewModel.activeDownload,
                     errorMessage: viewModel.modelLoadError,
+                    palette: ModelEnvironment.onboardingDefault.palette,
+                    reduceTransparency: reduceTransparency,
                     isConnected: connection.isConnected,
                     onDownload: { model in
                         await viewModel.download(curatedModel: model, connection: connection)
@@ -35,21 +41,47 @@ struct ChatView: View {
                     }
                 )
             } else if viewModel.shouldShowIntentPicker {
-                IntentPickerView { intent in
+                IntentPickerView(
+                    palette: ModelEnvironment.onboardingDefault.palette,
+                    reduceTransparency: reduceTransparency
+                ) { intent in
                     viewModel.chooseIntent(intent)
                 }
             } else {
                 chatContent
             }
+
+            if shouldShowConnectionRecoveryBanner {
+                ChatConnectionRecoveryBanner(
+                    state: connection.state,
+                    palette: chatPalette,
+                    reduceTransparency: reduceTransparency
+                ) {
+                    Task { await connection.startDiscovery() }
+                }
+                .padding(.top, 64)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .fontDesign(.rounded)
         .task {
             viewModel.bootstrapPersistence(modelContext: modelContext)
             await viewModel.loadModels(connection: connection)
+            refreshChatEnvironment(modelName: viewModel.selectedModel?.name, animated: false)
         }
         .onChange(of: connection.installedModels) { _, newModels in
             viewModel.applyInstalledModels(newModels)
         }
-        .animation(.easeInOut(duration: 0.6), value: currentEnvironment.id)
+        .onChange(of: viewModel.selectedModel?.name) { oldValue, newValue in
+            let shouldAnimate = hasInitializedTheme && oldValue != nil && oldValue != newValue
+            refreshChatEnvironment(modelName: newValue, animated: shouldAnimate)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            refreshChatEnvironment(modelName: viewModel.selectedModel?.name, animated: false)
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shouldShowConnectionRecoveryBanner)
         .sheet(isPresented: $isShowingSettings) {
             ChatSettingsView()
                 .environmentObject(connection)
@@ -68,80 +100,25 @@ struct ChatView: View {
         }
     }
 
-    private var currentEnvironment: ModelEnvironment {
-        ModelEnvironment.forModelName(viewModel.selectedModel?.name)
+    private var isPreModelFlow: Bool {
+        viewModel.isLoadingModels || viewModel.needsModelSetup || viewModel.shouldShowIntentPicker
+    }
+
+    private var backgroundEnvironment: ModelEnvironment {
+        isPreModelFlow ? .onboardingDefault : chatEnvironment
+    }
+
+    private var chatPalette: EnvironmentPalette {
+        chatEnvironment.palette
+    }
+
+    private var shouldShowConnectionRecoveryBanner: Bool {
+        !isPreModelFlow && !connection.isConnected
     }
 
     private var chatContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                if !viewModel.installedModels.isEmpty {
-                    ModelPickerChip(
-                        models: viewModel.installedModels,
-                        selectedModelName: viewModel.selectedModel?.name
-                    ) { selected in
-                        viewModel.selectModel(selected, userInitiated: true)
-                    }
-                }
-
-                Spacer()
-
-                Button {
-                    if viewModel.hasMessages {
-                        isShowingNewChatConfirmation = true
-                    } else {
-                        viewModel.startNewChat()
-                    }
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .padding(9)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isStreaming)
-
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .padding(9)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.top, 16)
-            .padding(.horizontal, 16)
-
-            if !connection.isConnected {
-                HStack(spacing: 10) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.orange)
-
-                    Text(connectionStatusBannerText)
-                        .font(.system(.footnote, design: .rounded, weight: .semibold))
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    Button("Retry") {
-                        Task { await connection.startDiscovery() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            }
+            topBarStrip
 
             if let modelLoadError = viewModel.modelLoadError {
                 HStack(spacing: 10) {
@@ -149,8 +126,8 @@ struct ChatView: View {
                         .foregroundStyle(.orange)
                         .font(.system(size: 12, weight: .semibold))
                     Text(modelLoadError)
-                        .font(.system(.footnote, design: .rounded, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(2)
                     Spacer()
                     Button("Retry") {
@@ -161,20 +138,22 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(chatPalette.nearLayer.opacity(0.48), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(.white.opacity(0.10), lineWidth: 0.5)
+                }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
             }
 
-            Spacer()
-
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
+                    LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(viewModel.messages) { message in
                             MessageBubble(
                                 message: message,
-                                userBubbleColor: currentEnvironment.palette.userBubble
+                                userBubbleColor: chatPalette.userBubble
                             )
                                 .id(message.id)
                         }
@@ -183,14 +162,19 @@ struct ChatView: View {
                                 .id("streaming")
                         }
                     }
-                    .padding()
+                    .padding(.top, 12)
+                    .padding(.bottom, 28)
+                    .padding(.horizontal, 16)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .onChange(of: viewModel.streamingText) { _, _ in
                     withAnimation { proxy.scrollTo("streaming") }
                 }
             }
 
             ComposeBar(
+                palette: chatPalette,
+                reduceTransparency: reduceTransparency,
                 isDisabled: viewModel.isStreaming || viewModel.selectedModel == nil || !connection.isConnected
             ) { text in
                 await viewModel.send(text: text, connection: connection)
@@ -198,19 +182,65 @@ struct ChatView: View {
         }
     }
 
-    private var connectionStatusBannerText: String {
-        switch connection.state {
-        case .discovering:
-            return "Looking for your Mac…"
-        case .connecting(let peerName):
-            return "Connecting to \(peerName)…"
-        case .reconnecting(let peerName, let attempt):
-            return "Reconnecting to \(peerName ?? "your Mac") (Attempt \(attempt))…"
-        case .failed(let message):
-            return message
-        case .connected:
-            return ""
+    @ViewBuilder
+    private var topBarStrip: some View {
+        let controls = HStack(spacing: 12) {
+            if !viewModel.installedModels.isEmpty {
+                ModelPickerChip(
+                    models: viewModel.installedModels,
+                    selectedModelName: viewModel.selectedModel?.name,
+                    palette: chatPalette,
+                    reduceTransparency: reduceTransparency
+                ) { selected in
+                    viewModel.selectModel(selected, userInitiated: true)
+                }
+            }
+
+            Spacer()
+
+            TopBarCircleButton(
+                systemName: "square.and.pencil",
+                palette: chatPalette,
+                reduceTransparency: reduceTransparency,
+                isEnabled: !viewModel.isStreaming
+            ) {
+                if viewModel.hasMessages {
+                    isShowingNewChatConfirmation = true
+                } else {
+                    viewModel.startNewChat()
+                }
+            }
+
+            TopBarCircleButton(
+                systemName: "gearshape.fill",
+                palette: chatPalette,
+                reduceTransparency: reduceTransparency
+            ) {
+                isShowingSettings = true
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+
+        if #available(iOS 26.0, *), !reduceTransparency {
+            GlassEffectContainer(spacing: 12) {
+                controls
+            }
+        } else {
+            controls
+        }
+    }
+
+    private func refreshChatEnvironment(modelName: String?, animated: Bool) {
+        let updated = ModelEnvironment.chat(for: modelName)
+        if animated {
+            withAnimation(.easeInOut(duration: 0.8)) {
+                chatEnvironment = updated
+            }
+        } else {
+            chatEnvironment = updated
+        }
+        hasInitializedTheme = true
     }
 }
 
@@ -243,6 +273,8 @@ struct ChatSettingsView: View {
                     DisclosureGroup("Connection runtime health", isExpanded: $isShowingDiagnostics) {
                         LabeledContent("Discovery starts", value: "\(connection.diagnostics.discoveryStarts)")
                         LabeledContent("Peer refreshes", value: "\(connection.diagnostics.peerRefreshes)")
+                        LabeledContent("Visible peers", value: "\(connection.diagnostics.visiblePeerCount)")
+                        LabeledContent("Visible helpers", value: "\(connection.diagnostics.visibleHelperCount)")
                         LabeledContent("Connect attempts", value: "\(connection.diagnostics.connectAttempts)")
                         LabeledContent("Connect successes", value: "\(connection.diagnostics.connectSuccesses)")
                         LabeledContent("Reconnect schedules", value: "\(connection.diagnostics.reconnectSchedules)")
@@ -261,6 +293,22 @@ struct ChatSettingsView: View {
                                 .font(.system(.footnote, design: .rounded))
                                 .foregroundStyle(.red)
                                 .padding(.top, 4)
+                        }
+
+                        if let loomRuntimeError = connection.diagnostics.loomRuntimeError,
+                           !loomRuntimeError.isEmpty {
+                            Text("Loom runtime: \(loomRuntimeError)")
+                                .font(.system(.footnote, design: .rounded))
+                                .foregroundStyle(.orange)
+                                .padding(.top, 2)
+                        }
+
+                        if let peerSummary = connection.diagnostics.lastPeerSnapshotSummary,
+                           !peerSummary.isEmpty {
+                            Text(peerSummary)
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 2)
                         }
 
                         if diagnosticsEvents.isEmpty {
@@ -659,6 +707,8 @@ struct ChatSettingsView: View {
         lines.append("Pasture iOS Connection Diagnostics")
         lines.append("Discovery starts: \(diagnostics.discoveryStarts)")
         lines.append("Peer refreshes: \(diagnostics.peerRefreshes)")
+        lines.append("Visible peers: \(diagnostics.visiblePeerCount)")
+        lines.append("Visible helpers: \(diagnostics.visibleHelperCount)")
         lines.append("Connect attempts: \(diagnostics.connectAttempts)")
         lines.append("Connect successes: \(diagnostics.connectSuccesses)")
         lines.append("Reconnect schedules: \(diagnostics.reconnectSchedules)")
@@ -674,6 +724,14 @@ struct ChatSettingsView: View {
 
         if let lastError = diagnostics.lastError, !lastError.isEmpty {
             lines.append("Last error: \(lastError)")
+        }
+
+        if let loomRuntimeError = diagnostics.loomRuntimeError, !loomRuntimeError.isEmpty {
+            lines.append("Loom runtime error: \(loomRuntimeError)")
+        }
+
+        if let peerSummary = diagnostics.lastPeerSnapshotSummary, !peerSummary.isEmpty {
+            lines.append("Peer snapshot: \(peerSummary)")
         }
 
         lines.append("Recent events:")
@@ -692,54 +750,66 @@ struct ChatSettingsView: View {
 }
 
 struct IntentPickerView: View {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
     let onSelect: (ChatIntent) -> Void
+    @State private var pressedIntent: ChatIntent?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("What will you use this for?")
                     .font(.system(.title2, design: .rounded, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text("Pick one and Pasture will choose your best model automatically.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 24)
+            .padding(.horizontal, 20)
+            .padding(.top, 32)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 ForEach(ChatIntent.allCases) { intent in
                     Button {
-                        onSelect(intent)
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
+                            pressedIntent = intent
+                        }
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 120_000_000)
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
+                                pressedIntent = nil
+                            }
+                            onSelect(intent)
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: intent.icon)
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.primary)
-                                .frame(width: 26)
+                                .foregroundStyle(palette.accent)
+                                .frame(width: 24)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(intent.title)
-                                    .font(.system(.headline, design: .rounded))
-                                    .foregroundStyle(.primary)
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
 
                                 Text(intent.subtitle)
-                                    .font(.system(.footnote, design: .rounded))
-                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.68))
                             }
+
                             Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
                         }
-                        .padding(14)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
+                        .scaleEffect(pressedIntent == intent ? 0.97 : 1)
                     }
                     .buttonStyle(.plain)
+                    .modifier(CardSurfaceModifier(reduceTransparency: reduceTransparency, cornerRadius: 22))
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
 
             Spacer(minLength: 12)
         }
@@ -747,17 +817,26 @@ struct IntentPickerView: View {
 }
 
 struct LoadingModelsView: View {
+    let palette: EnvironmentPalette
+
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             ProgressView()
                 .tint(.white)
-            Text("Loading models from your Mac…")
-                .font(.system(.body, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
+            Text("Loading models…")
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.76))
         }
-        .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 22)
+        .background(palette.midLayer.opacity(0.34), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.10), lineWidth: 0.5)
+        }
+        .padding(.horizontal, 28)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .animation(.easeOut(duration: 0.25), value: palette.layerCount)
     }
 }
 
@@ -766,6 +845,8 @@ struct FirstModelSetupView: View {
     let installedModelNames: Set<String>
     let activeDownload: ModelDownloadState?
     let errorMessage: String?
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
     let isConnected: Bool
     let onDownload: (CuratedModel) async -> Void
     let onRefresh: () async -> Void
@@ -779,32 +860,32 @@ struct FirstModelSetupView: View {
                     .foregroundStyle(.white)
 
                 Text("Pick one model to download on your Mac. You can add more any time.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
+            .padding(.horizontal, 20)
+            .padding(.top, 28)
 
             if let activeDownload {
                 ActiveDownloadCard(
                     state: activeDownload,
                     onCancel: cancelActiveDownload
                 )
-                    .padding(.horizontal, 16)
+                .padding(.horizontal, 16)
             }
 
             if let errorMessage {
                 Text(errorMessage)
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(.red)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
             }
 
             if !isConnected {
-                Text("Pasture is reconnecting to your Mac. Downloads will unlock as soon as the connection is back.")
+                Text("Pasture is reconnecting to your Mac. Downloads unlock once connection is restored.")
                     .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(.horizontal, 16)
+                    .foregroundStyle(.white.opacity(0.84))
+                    .padding(.horizontal, 20)
             }
 
             ScrollView {
@@ -812,6 +893,8 @@ struct FirstModelSetupView: View {
                     ForEach(models) { model in
                         CuratedModelCard(
                             model: model,
+                            palette: palette,
+                            reduceTransparency: reduceTransparency,
                             isInstalled: isInstalled(model),
                             isDownloading: activeDownload?.modelID == model.id,
                             isDownloadEnabled: isConnected,
@@ -821,7 +904,7 @@ struct FirstModelSetupView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
                 .padding(.bottom, 8)
             }
 
@@ -832,10 +915,10 @@ struct FirstModelSetupView: View {
                     .font(.system(.footnote, design: .rounded, weight: .medium))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(isConnected ? 0.85 : 0.55))
+            .foregroundStyle(.white.opacity(isConnected ? 0.72 : 0.45))
             .disabled(!isConnected)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
         .padding(.vertical, 8)
         .onDisappear {
@@ -873,6 +956,7 @@ struct ActiveDownloadCard: View {
             HStack {
                 Text("Downloading \(state.displayName)")
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
 
                 Spacer(minLength: 8)
 
@@ -885,21 +969,29 @@ struct ActiveDownloadCard: View {
 
             Text(state.status)
                 .font(.system(.footnote, design: .rounded))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.75))
 
             if let fraction = state.fraction {
                 ProgressView(value: fraction)
+                    .tint(.white)
             } else {
                 ProgressView()
+                    .tint(.white)
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.10), lineWidth: 0.5)
+        }
     }
 }
 
 struct CuratedModelCard: View {
     let model: CuratedModel
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
     let isInstalled: Bool
     let isDownloading: Bool
     let isDownloadEnabled: Bool
@@ -909,68 +1001,81 @@ struct CuratedModelCard: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(model.displayName)
-                    .font(.system(.headline, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
 
                 Text(model.description)
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.68))
 
                 HStack(spacing: 6) {
-                    ModelTag(text: model.sizeLabel)
+                    ModelTag(text: model.sizeLabel, weight: .semibold)
                     ForEach(model.tags, id: \.self) { tag in
-                        ModelTag(text: tag)
+                        ModelTag(text: tag, weight: .medium)
                     }
                 }
             }
 
             Spacer(minLength: 8)
 
-            Button {
-                onDownload()
-            } label: {
-                Text(buttonTitle)
-                    .font(.system(.footnote, design: .rounded, weight: .semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(buttonBackground, in: Capsule())
-            }
-            .disabled(isInstalled || isDownloading || !isDownloadEnabled)
+            downloadAction
+                .disabled(isInstalled || isDownloading || !isDownloadEnabled)
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(16)
+        .modifier(CardSurfaceModifier(reduceTransparency: reduceTransparency, cornerRadius: 24))
     }
 
-    private var buttonTitle: String {
-        if isInstalled { return "Installed" }
-        if isDownloading { return "Downloading" }
-        return "Download"
-    }
-
-    private var buttonBackground: Color {
-        if isInstalled { return .green.opacity(0.25) }
-        if isDownloading { return .orange.opacity(0.2) }
-        return .blue.opacity(0.18)
+    @ViewBuilder
+    private var downloadAction: some View {
+        if isDownloading {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(palette.userBubble.opacity(0.32), in: Capsule())
+        } else if isInstalled {
+            Text("Installed")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.58))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.08), in: Capsule())
+        } else {
+            Button(action: onDownload) {
+                Text("Download")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            .modifier(DownloadCapsuleModifier(palette: palette, reduceTransparency: reduceTransparency))
+        }
     }
 }
 
 struct ModelTag: View {
     let text: String
+    let weight: Font.Weight
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .font(.system(size: 10, weight: weight, design: .rounded))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(.white.opacity(0.18), in: Capsule())
-            .foregroundStyle(.primary)
+            .background(.white.opacity(0.08), in: Capsule())
+            .foregroundStyle(.white.opacity(0.68))
     }
 }
 
 struct ModelPickerChip: View {
     let models: [OllamaModel]
     let selectedModelName: String?
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
     let onSelect: (OllamaModel) -> Void
+    @State private var isPressed = false
 
     var body: some View {
         Menu {
@@ -982,16 +1087,29 @@ struct ModelPickerChip: View {
         } label: {
             HStack(spacing: 6) {
                 Text(selectedModelName ?? "Select model")
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
             }
-            .foregroundStyle(.white.opacity(0.9))
+            .foregroundStyle(.white.opacity(0.88))
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.vertical, 7)
+            .scaleEffect(isPressed ? 0.96 : 1)
         }
         .menuStyle(.button)
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isPressed = true
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    isPressed = false
+                }
+            }
+        })
+        .modifier(ModelChipSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency))
     }
 }
 
@@ -1006,7 +1124,7 @@ struct MessageBubble: View {
             if message.role == "user" { Spacer() }
 
             bubbleContent
-                .frame(maxWidth: 280, alignment: message.role == "user" ? .trailing : .leading)
+                .frame(maxWidth: 312, alignment: message.role == "user" ? .trailing : .leading)
 
             if message.role != "user" { Spacer() }
         }
@@ -1016,36 +1134,72 @@ struct MessageBubble: View {
     private var bubbleContent: some View {
         if message.role == "user" {
             Text(message.content)
-                .font(.system(.body, design: .rounded))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(userBubbleColor)
+                .font(.system(size: 16, weight: .regular, design: .rounded))
+                .padding(.horizontal, 15)
+                .padding(.vertical, 12)
+                .background(userBubbleColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         } else {
             Markdown(message.content)
+                .markdownTheme(.basic)
+                .markdownTextStyle {
+                    ForegroundColor(.black.opacity(0.82))
+                    BackgroundColor(nil)
+                }
+                .markdownTextStyle(\.link) {
+                    ForegroundColor(.blue.opacity(0.9))
+                }
                 .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, 15)
+                .padding(.vertical, 12)
+                .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
+                }
         }
     }
 }
 
 struct StreamingBubble: View {
     let text: String
+    @State private var cursorVisible = false
 
     var body: some View {
         HStack {
-            Text(text.isEmpty ? "▍" : text)
-                .font(.system(.body, design: .rounded))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .frame(maxWidth: 280, alignment: .leading)
+            ZStack(alignment: .bottomTrailing) {
+                Markdown(text.isEmpty ? " " : text)
+                    .markdownTheme(.basic)
+                    .markdownTextStyle {
+                        ForegroundColor(.black.opacity(0.82))
+                        BackgroundColor(nil)
+                    }
+                    .markdownTextStyle(\.link) {
+                        ForegroundColor(.blue.opacity(0.9))
+                    }
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("▍")
+                    .opacity(cursorVisible ? 1 : 0.35)
+                    .foregroundStyle(Color.black.opacity(0.66))
+                    .padding(.trailing, 2)
+                    .padding(.bottom, 1)
+            }
+            .padding(.horizontal, 15)
+            .padding(.vertical, 12)
+            .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(.white.opacity(0.18), lineWidth: 0.5)
+            }
+            .frame(maxWidth: 312, alignment: .leading)
             Spacer()
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                cursorVisible = true
+            }
         }
     }
 }
@@ -1053,6 +1207,8 @@ struct StreamingBubble: View {
 // MARK: - Compose bar
 
 struct ComposeBar: View {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
     let isDisabled: Bool
     let onSend: (String) async -> Void
 
@@ -1061,30 +1217,256 @@ struct ComposeBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            TextField("Message", text: $text, axis: .vertical)
-                .font(.system(.body, design: .rounded))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .focused($focused)
-                .lineLimit(1...5)
-                .disabled(isDisabled)
+            TextField(
+                "",
+                text: $text,
+                prompt: Text("Ask something").foregroundStyle(.white.opacity(0.62)),
+                axis: .vertical
+            )
+            .font(.system(size: 16, weight: .regular, design: .rounded))
+            .foregroundStyle(.white)
+            .focused($focused)
+            .lineLimit(1...5)
+            .disabled(isDisabled)
 
-            Button {
-                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                let message = text
-                text = ""
-                Task { await onSend(message) }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(isDisabled || text.isEmpty ? .white.opacity(0.4) : .white)
-            }
-            .disabled(isDisabled || text.isEmpty)
+            sendButton
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .modifier(ComposeBarSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency))
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
+        .padding(.vertical, 14)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    focused = false
+                }
+                .font(.system(.body, design: .rounded, weight: .semibold))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sendButton: some View {
+        Button {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            text = ""
+            Task { await onSend(trimmed) }
+        } label: {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(canSend ? .white : .white.opacity(0.3))
+                .frame(width: 34, height: 34)
+                .background {
+                    buttonBackground
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: canSend)
+    }
+
+    @ViewBuilder
+    private var buttonBackground: some View {
+        if canSend, #available(iOS 26.0, *), !reduceTransparency {
+            Circle()
+                .fill(.clear)
+                .glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            Circle().fill(canSend ? palette.userBubble : .white.opacity(0.2))
+        }
+    }
+
+    private var canSend: Bool {
+        !isDisabled && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+private struct TopBarCircleButton: View {
+    let systemName: String
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+    var isEnabled = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.88))
+                .frame(width: 34, height: 34)
+                .modifier(TopBarButtonSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency, isEnabled: isEnabled))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+    }
+}
+
+private struct ChatConnectionRecoveryBanner: View {
+    let state: ConnectionManager.ConnectionState
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if showsRetry {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(palette.accent)
+            } else {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+            }
+
+            Text(message)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            if showsRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .modifier(RecoveryBannerSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency))
+    }
+
+    private var showsRetry: Bool {
+        if case .failed = state {
+            return true
+        }
+        return false
+    }
+
+    private var message: String {
+        switch state {
+        case .discovering:
+            return "Looking for your Mac…"
+        case .connecting(let peerName):
+            return "Connecting to \(peerName)…"
+        case .reconnecting(let peerName, let attempt):
+            return "Reconnecting to \(peerName ?? "your Mac") (Attempt \(attempt))…"
+        case .failed(let message):
+            return message
+        case .connected:
+            return ""
+        }
+    }
+}
+
+private struct CardSurfaceModifier: ViewModifier {
+    let reduceTransparency: Bool
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            content
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: max(18, cornerRadius - 6), style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: max(18, cornerRadius - 6), style: .continuous)
+                        .stroke(.white.opacity(0.10), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct DownloadCapsuleModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular.tint(palette.userBubble.opacity(0.34)).interactive(), in: Capsule())
+        } else {
+            content.background(palette.userBubble, in: Capsule())
+        }
+    }
+}
+
+private struct ModelChipSurfaceModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular.tint(palette.accent.opacity(0.26)), in: Capsule())
+        } else {
+            content
+                .background(palette.accent.opacity(0.14), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(palette.accent.opacity(0.22), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct TopBarButtonSurfaceModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency, isEnabled {
+            content.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            content.background(.white.opacity(0.10), in: Circle())
+        }
+    }
+}
+
+private struct RecoveryBannerSurfaceModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content
+                .background(palette.nearLayer.opacity(0.44), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(.white.opacity(0.10), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct ComposeBarSurfaceModifier: ViewModifier {
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        } else {
+            content
+                .background(palette.nearLayer.opacity(0.64), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(.white.opacity(0.12))
+                        .frame(height: 0.5)
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                }
+        }
     }
 }

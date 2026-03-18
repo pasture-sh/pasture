@@ -33,6 +33,7 @@ targets:
         NSLocalNetworkUsageDescription: "Pasture uses your local network to find and connect to your Mac running Ollama."
         NSBonjourServices:
           - _pasture._tcp
+        PastureCloudKitContainerIdentifier: ""
         PastureMacDownloadURL: ""
         MacCompanionDownloadURL: ""
     dependencies:
@@ -40,6 +41,8 @@ targets:
         product: Loom
       - package: Loom
         product: LoomKit
+      - package: Loom
+        product: LoomCloudKit
       - package: swift-markdown-ui
         product: MarkdownUI
     settings:
@@ -48,6 +51,7 @@ targets:
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: Sources/Pasture/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Sources/Pasture/Pasture.entitlements
 
   PastureTests:
     type: bundle.unit-test
@@ -77,13 +81,17 @@ targets:
         NSLocalNetworkUsageDescription: "Pasture for Mac uses your local network to connect to Pasture for iOS."
         NSBonjourServices:
           - _pasture._tcp
+        PastureCloudKitContainerIdentifier: ""
     dependencies:
       - package: Loom
         product: Loom
       - package: Loom
         product: LoomKit
+      - package: Loom
+        product: LoomCloudKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amrith.pasture.helper
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: Sources/PastureHelper/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PastureHelper/PastureHelper.entitlements

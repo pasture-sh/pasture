@@ -20,13 +20,15 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>MacCompanionDownloadURL</key>
+	<string></string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_pasture._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pasture uses your local network to find and connect to your Mac running Ollama.</string>
-	<key>MacCompanionDownloadURL</key>
+	<key>PastureCloudKitContainerIdentifier</key>
 	<string></string>
 	<key>PastureMacDownloadURL</key>
 	<string></string>

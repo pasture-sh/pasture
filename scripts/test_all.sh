@@ -11,6 +11,7 @@ else
   echo "xcodegen not found; using existing .xcodeproj"
 fi
 
+"$ROOT_DIR/scripts/check_loom_consistency.sh"
 "$ROOT_DIR/scripts/test_ios_sim.sh"
 "$ROOT_DIR/scripts/build_macos_helper.sh"
 

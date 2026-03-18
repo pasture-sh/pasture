@@ -29,6 +29,9 @@ final class LoomAdvertiser: ObservableObject {
         self.proxy = proxy
         self.isPaused = defaults.bool(forKey: DefaultsKeys.isDiscoveryPaused)
         recordEvent("Helper advertiser initialized.")
+        if let runtimeWarning = PastureLoomRuntimeConfiguration.runtimeWarning() {
+            recordEvent(runtimeWarning, level: .warning)
+        }
     }
 
     func start() async {
@@ -87,7 +90,7 @@ final class LoomAdvertiser: ObservableObject {
             print("[LoomAdvertiser] Failed to start: \(error)")
             isAdvertising = false
             ollamaIsReachable = false
-            recordError("Failed to start advertiser: \(error.localizedDescription)")
+            recordError(userFacingStartErrorMessage(for: error))
         }
     }
 
@@ -175,6 +178,18 @@ final class LoomAdvertiser: ObservableObject {
     private func recordError(_ message: String) {
         diagnostics.startFailures += 1
         recordEvent(message, level: .error)
+    }
+
+    private func userFacingStartErrorMessage(for error: Error) -> String {
+        let rawMessage = String(describing: error)
+        let localizedMessage = error.localizedDescription
+        let combined = "\(rawMessage) \(localizedMessage)"
+
+        if combined.contains("-34018") {
+            return "Failed to start advertiser: Keychain permission is missing for this debug build. In Xcode, open target PastureHelper -> Signing & Capabilities, select your Apple Team, then run again."
+        }
+
+        return "Failed to start advertiser: \(localizedMessage)"
     }
 }
 
