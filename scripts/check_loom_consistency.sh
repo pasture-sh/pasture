@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_SPEC="$ROOT_DIR/project.yml"
+PROJECT_PATH="$ROOT_DIR/Pasture.xcodeproj"
 PACKAGE_RESOLVED="$ROOT_DIR/Pasture.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
 if [[ ! -f "$PROJECT_SPEC" ]]; then
@@ -11,7 +12,17 @@ if [[ ! -f "$PROJECT_SPEC" ]]; then
 fi
 
 if [[ ! -f "$PACKAGE_RESOLVED" ]]; then
-  echo "Missing Package.resolved at $PACKAGE_RESOLVED"
+  if [[ ! -f "$PROJECT_PATH/project.pbxproj" ]]; then
+    echo "Project not found at $PROJECT_PATH"
+    exit 1
+  fi
+
+  echo "Package.resolved not found; resolving Swift packages first..."
+  xcodebuild -project "$PROJECT_PATH" -resolvePackageDependencies >/dev/null
+fi
+
+if [[ ! -f "$PACKAGE_RESOLVED" ]]; then
+  echo "Missing Package.resolved at $PACKAGE_RESOLVED even after resolving packages."
   exit 1
 fi
 
