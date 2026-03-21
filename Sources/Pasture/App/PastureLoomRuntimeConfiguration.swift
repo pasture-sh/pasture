@@ -1,4 +1,5 @@
 import Foundation
+import Loom
 import LoomKit
 import LoomCloudKit
 
@@ -6,6 +7,7 @@ enum PastureLoomRuntimeConfiguration {
     static let serviceType = "_pasture._tcp"
     static let serviceMetadata = ["service": "pasture"]
     static let cloudKitContainerInfoKey = "PastureCloudKitContainerIdentifier"
+    static let tailscaleHostnameKey = "pasture.tailscale.hostname"
 
     static func makeConfiguration(
         serviceName: String,
@@ -15,8 +17,27 @@ enum PastureLoomRuntimeConfiguration {
             serviceType: serviceType,
             serviceName: serviceName,
             cloudKit: cloudKitConfiguration(bundle: bundle),
+            overlayDirectory: overlayDirectoryConfiguration(),
             trust: .sameAccountAutoTrust,
             advertisementMetadata: serviceMetadata
+        )
+    }
+
+    /// Overlay directory that probes Tailscale (or any overlay) hosts.
+    /// The seed provider reads from UserDefaults on every refresh, so the user
+    /// can enter or change their Mac's Tailscale hostname in settings at any time
+    /// and Loom will pick it up within the next 30-second refresh cycle.
+    static func overlayDirectoryConfiguration() -> LoomOverlayDirectoryConfiguration {
+        LoomOverlayDirectoryConfiguration(
+            probePort: Loom.defaultOverlayProbePort,
+            refreshInterval: .seconds(30),
+            probeTimeout: .seconds(3),
+            seedProvider: {
+                guard let hostname = UserDefaults.standard.string(forKey: tailscaleHostnameKey),
+                      !hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { return [] }
+                return [LoomOverlaySeed(host: hostname.trimmingCharacters(in: .whitespacesAndNewlines))]
+            }
         )
     }
 

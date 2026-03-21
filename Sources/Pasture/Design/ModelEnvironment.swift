@@ -221,19 +221,19 @@ struct ModelEnvironment: Equatable, Identifiable {
             )
         case .evening:
             return (
-                skyTop: Color(hex: "C7D0DA"),
-                skyBottom: Color(hex: "A4B0BE"),
-                horizonGlow: Color(hex: "E8D6B2"),
-                farLayer: Color(hex: "B2B099"),
-                midLayer: Color(hex: "91917D"),
-                nearLayer: Color(hex: "71745F"),
-                foregroundLayer: Color(hex: "595C4C"),
-                cloudTint: Color(hex: "FFF2E0").opacity(0.34),
-                atmosphereTint: Color(hex: "E5D1AF").opacity(0.24),
-                celestialTint: Color(hex: "FBF2DF"),
-                accent: Color(hex: "D3B47B"),
-                userBubble: Color(hex: "6E7965"),
-                primaryTextOnAccent: Color(red: 0.22, green: 0.20, blue: 0.16)
+                skyTop: Color(hex: "5C7A9A"),
+                skyBottom: Color(hex: "C4905E"),
+                horizonGlow: Color(hex: "F0B040"),
+                farLayer: Color(hex: "A08E74"),
+                midLayer: Color(hex: "7D6D52"),
+                nearLayer: Color(hex: "5B5040"),
+                foregroundLayer: Color(hex: "3C3228"),
+                cloudTint: Color(hex: "FFE8B0").opacity(0.50),
+                atmosphereTint: Color(hex: "D4845A").opacity(0.22),
+                celestialTint: Color(hex: "FFE8A0"),
+                accent: Color(hex: "D98040"),
+                userBubble: Color(hex: "7A5C44"),
+                primaryTextOnAccent: Color(red: 0.22, green: 0.16, blue: 0.10)
             )
         case .night:
             return (

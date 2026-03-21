@@ -15,8 +15,6 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelLoadError: String?
     @Published private(set) var activeDownload: ModelDownloadState?
-    @Published private(set) var selectedIntent: ChatIntent?
-    @Published private(set) var hasCompletedIntentSelection = false
 
     var needsModelSetup: Bool {
         !isLoadingModels && modelLoadError == nil && installedModels.isEmpty
@@ -26,76 +24,38 @@ final class ChatViewModel: ObservableObject {
         Set(installedModels.map(\.name))
     }
 
-    var shouldShowIntentPicker: Bool {
-        !isLoadingModels && modelLoadError == nil && !installedModels.isEmpty && !hasCompletedIntentSelection
-    }
+    var hasMessages: Bool { !messages.isEmpty }
 
-    var hasMessages: Bool {
-        !messages.isEmpty
-    }
+    private let conversation: ConversationRecord
+    private let modelContext: ModelContext
 
     private enum DefaultsKeys {
-        static let selectedIntent = "pasture.chat.intent"
         static let selectedModelName = "pasture.chat.selectedModelName"
-        static let hasCompletedIntent = "pasture.chat.hasCompletedIntent"
         static let cachedModels = "pasture.chat.cachedModels"
     }
 
-    private var modelContext: ModelContext?
-    private var historyRecord: ConversationHistoryRecord?
-    private var hasBootstrappedPersistence = false
-
-    init() {
-        let defaults = UserDefaults.standard
-        if let intentRawValue = defaults.string(forKey: DefaultsKeys.selectedIntent),
-           let intent = ChatIntent(rawValue: intentRawValue) {
-            selectedIntent = intent
-        }
-        hasCompletedIntentSelection = defaults.bool(forKey: DefaultsKeys.hasCompletedIntent)
-        restoreCachedModels()
-    }
-
-    func bootstrapPersistence(modelContext: ModelContext) {
-        guard !hasBootstrappedPersistence else { return }
-        hasBootstrappedPersistence = true
+    init(conversation: ConversationRecord, modelContext: ModelContext) {
+        self.conversation = conversation
         self.modelContext = modelContext
 
-        var descriptor = FetchDescriptor<ConversationHistoryRecord>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
+        restoreCachedModels()
 
-        do {
-            guard let existingRecord = try modelContext.fetch(descriptor).first else { return }
-            historyRecord = existingRecord
+        // Load messages already saved to this conversation
+        let sorted = conversation.messages.sorted { $0.createdAt < $1.createdAt }
+        messages = sorted.map { Message(role: $0.role, content: $0.content) }
 
-            if !existingRecord.payload.isEmpty,
-               let restoredMessages = try? JSONDecoder().decode(
-                    [PersistedConversationMessage].self,
-                    from: existingRecord.payload
-               ) {
-                messages = restoredMessages.map { Message(role: $0.role, content: $0.content) }
-            }
-
-            let defaults = UserDefaults.standard
-            if defaults.string(forKey: DefaultsKeys.selectedModelName) == nil,
-               let selectedModelName = existingRecord.selectedModelName {
-                defaults.set(selectedModelName, forKey: DefaultsKeys.selectedModelName)
-            }
-
-            if defaults.string(forKey: DefaultsKeys.selectedIntent) == nil,
-               let selectedIntentRawValue = existingRecord.selectedIntentRawValue {
-                defaults.set(selectedIntentRawValue, forKey: DefaultsKeys.selectedIntent)
-                defaults.set(true, forKey: DefaultsKeys.hasCompletedIntent)
-                if let restoredIntent = ChatIntent(rawValue: selectedIntentRawValue) {
-                    selectedIntent = restoredIntent
-                    hasCompletedIntentSelection = true
-                }
-            }
-        } catch {
-            print("[ChatViewModel] Failed to load conversation history: \(error)")
+        // Restore model: prefer conversation's saved model, then last globally selected, then first
+        let preferredName = conversation.modelName
+            ?? UserDefaults.standard.string(forKey: DefaultsKeys.selectedModelName)
+        if let name = preferredName,
+           let match = installedModels.first(where: { $0.name == name }) {
+            selectedModel = match
+        } else {
+            selectedModel = installedModels.first
         }
     }
+
+    // MARK: - Model management
 
     func loadModels(connection: ConnectionManager) async {
         isLoadingModels = true
@@ -109,8 +69,7 @@ final class ChatViewModel: ObservableObject {
                 }
             )
         } catch {
-            print("[ChatViewModel] Failed to fetch models: \(error)")
-            modelLoadError = "Couldn’t load models from your Mac. Please try again."
+            modelLoadError = "Couldn't load models from your Mac. Please try again."
         }
 
         isLoadingModels = false
@@ -119,27 +78,24 @@ final class ChatViewModel: ObservableObject {
     func applyInstalledModels(_ models: [OllamaModel]) {
         installedModels = models
 
-        let defaults = UserDefaults.standard
-        let savedModelName = defaults.string(forKey: DefaultsKeys.selectedModelName)
-
-        if let selectedModel,
-           installedModels.contains(where: { $0.name == selectedModel.name }) {
+        if let current = selectedModel,
+           installedModels.contains(where: { $0.name == current.name }) {
             cacheInstalledModels()
-            persistConversation()
+            updateConversationMeta()
             return
         }
 
-        if let savedModelName,
-           let savedModel = installedModels.first(where: { $0.name == savedModelName }) {
-            selectedModel = savedModel
-            cacheInstalledModels()
-            persistConversation()
-            return
+        let preferredName = conversation.modelName
+            ?? UserDefaults.standard.string(forKey: DefaultsKeys.selectedModelName)
+        if let name = preferredName,
+           let match = installedModels.first(where: { $0.name == name }) {
+            selectedModel = match
+        } else {
+            selectedModel = installedModels.first
         }
 
-        selectedModel = installedModels.first
         cacheInstalledModels()
-        persistConversation()
+        updateConversationMeta()
     }
 
     func selectModel(_ model: OllamaModel, userInitiated: Bool = false) {
@@ -154,7 +110,7 @@ final class ChatViewModel: ObservableObject {
             feedback.impactOccurred()
         }
 #endif
-        persistConversation()
+        updateConversationMeta()
     }
 
     func isInstalled(_ curatedModel: CuratedModel) -> Bool {
@@ -163,24 +119,8 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func chooseIntent(_ intent: ChatIntent) {
-        selectedIntent = intent
-        hasCompletedIntentSelection = true
-
-        let defaults = UserDefaults.standard
-        defaults.set(intent.rawValue, forKey: DefaultsKeys.selectedIntent)
-        defaults.set(true, forKey: DefaultsKeys.hasCompletedIntent)
-
-        if let recommended = recommendModel(for: intent) {
-            selectModel(recommended)
-        }
-
-        persistConversation()
-    }
-
     func download(curatedModel: CuratedModel, connection: ConnectionManager) async {
-        guard activeDownload == nil else { return }
-        guard !isInstalled(curatedModel) else { return }
+        guard activeDownload == nil, !isInstalled(curatedModel) else { return }
 
         activeDownload = ModelDownloadState(
             modelID: curatedModel.id,
@@ -199,46 +139,36 @@ final class ChatViewModel: ObservableObject {
                     status: progress.status.capitalized,
                     fraction: progress.total == nil ? nil : progress.fraction
                 )
-
-                if progress.status == "success" {
-                    didSucceed = true
-                }
+                if progress.status == "success" { didSucceed = true }
             }
         } catch {
-            if error is CancellationError {
-                modelLoadError = "Download cancelled."
-            } else {
-            modelLoadError = userFacingError(
-                for: error,
-                fallback: "Model download failed. Please try again."
-            )
-            }
+            modelLoadError = error is CancellationError
+                ? "Download cancelled."
+                : userFacingError(for: error, fallback: "Model download failed. Please try again.")
         }
 
         if didSucceed {
             await loadModels(connection: connection)
-            if let downloadedModel = installedModels.first(where: {
+            if let downloaded = installedModels.first(where: {
                 $0.name == curatedModel.id || $0.name.hasPrefix("\(curatedModel.id):")
             }) {
-                selectModel(downloadedModel)
+                selectModel(downloaded)
             }
         } else if modelLoadError == nil {
-            modelLoadError = "Model download didn’t finish. Please try again."
+            modelLoadError = "Model download didn't finish. Please try again."
         }
 
         activeDownload = nil
     }
 
+    // MARK: - Sending
+
     func send(text: String, connection: ConnectionManager) async {
         guard let model = selectedModel else { return }
+
         guard connection.isConnected else {
-            messages.append(
-                Message(
-                    role: "assistant",
-                    content: "Connection to your Mac is currently unavailable. Pasture is reconnecting in the background."
-                )
-            )
-            persistConversation()
+            let msg = "Connection to your Mac is currently unavailable. Pasture is reconnecting in the background."
+            appendAndPersist(role: "assistant", content: msg)
             return
         }
 
@@ -247,10 +177,7 @@ final class ChatViewModel: ObservableObject {
         feedback.impactOccurred()
 #endif
 
-        let userMessage = Message(role: "user", content: text)
-        messages.append(userMessage)
-        persistConversation()
-
+        appendAndPersist(role: "user", content: text)
         let history = messages.map { ChatMessage(role: $0.role, content: $0.content) }
 
         isStreaming = true
@@ -271,88 +198,50 @@ final class ChatViewModel: ObservableObject {
             )
         }
 
+        streamingText = ""
+        isStreaming = false
+
         if !fullResponse.isEmpty {
-            messages.append(Message(role: "assistant", content: fullResponse))
-            persistConversation()
-        } else if let streamErrorMessage {
-            messages.append(
-                Message(
-                    role: "assistant",
-                    content: streamErrorMessage
-                )
-            )
-            persistConversation()
+            appendAndPersist(role: "assistant", content: fullResponse)
+            if let err = streamErrorMessage {
+                appendAndPersist(role: "assistant", content: "Response interrupted: \(err)")
+            }
+        } else if let err = streamErrorMessage {
+            appendAndPersist(role: "assistant", content: err)
         } else if !connection.isConnected {
-            messages.append(
-                Message(
-                    role: "assistant",
-                    content: "The response was interrupted because your Mac disconnected. Please try again in a moment."
-                )
+            appendAndPersist(
+                role: "assistant",
+                content: "The response was interrupted because your Mac disconnected. Please try again in a moment."
             )
-            persistConversation()
         }
-
-        if !fullResponse.isEmpty, let streamErrorMessage {
-            messages.append(
-                Message(
-                    role: "assistant",
-                    content: "Response interrupted: \(streamErrorMessage)"
-                )
-            )
-            persistConversation()
-        }
-
-        streamingText = ""
-        isStreaming = false
     }
 
-    func startNewChat() {
-        messages.removeAll()
-        streamingText = ""
-        isStreaming = false
-        persistConversation()
+    // MARK: - Persistence
+
+    private func appendAndPersist(role: String, content: String) {
+        messages.append(Message(role: role, content: content))
+        let record = MessageRecord(role: role, content: content, conversation: conversation)
+        modelContext.insert(record)
+        conversation.updatedAt = .now
+        conversation.modelName = selectedModel?.name
+
+        if conversation.title == nil, role == "user" {
+            conversation.title = autoTitle(from: content)
+        }
+
+        try? modelContext.save()
     }
 
-    private func persistConversation() {
-        guard let modelContext else { return }
+    private func updateConversationMeta() {
+        conversation.modelName = selectedModel?.name
+        try? modelContext.save()
+    }
 
-        let payload: Data
-        do {
-            payload = try JSONEncoder().encode(
-                messages.map { PersistedConversationMessage(role: $0.role, content: $0.content) }
-            )
-        } catch {
-            print("[ChatViewModel] Failed to encode conversation history: \(error)")
-            return
-        }
-
-        let now = Date()
-        let activeRecord: ConversationHistoryRecord
-        if let historyRecord {
-            activeRecord = historyRecord
-        } else {
-            let created = ConversationHistoryRecord(
-                createdAt: now,
-                updatedAt: now,
-                selectedModelName: selectedModel?.name,
-                selectedIntentRawValue: selectedIntent?.rawValue,
-                payload: payload
-            )
-            modelContext.insert(created)
-            historyRecord = created
-            activeRecord = created
-        }
-
-        activeRecord.updatedAt = now
-        activeRecord.selectedModelName = selectedModel?.name
-        activeRecord.selectedIntentRawValue = selectedIntent?.rawValue
-        activeRecord.payload = payload
-
-        do {
-            try modelContext.save()
-        } catch {
-            print("[ChatViewModel] Failed to persist conversation history: \(error)")
-        }
+    private func autoTitle(from content: String) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
+        guard firstLine.count > 45 else { return firstLine }
+        return String(firstLine.prefix(42)) + "…"
     }
 
     private func cacheInstalledModels() {
@@ -361,78 +250,23 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func restoreCachedModels() {
-        let defaults = UserDefaults.standard
-        guard let encoded = defaults.data(forKey: DefaultsKeys.cachedModels),
+        guard let encoded = UserDefaults.standard.data(forKey: DefaultsKeys.cachedModels),
               let decoded = try? JSONDecoder().decode([OllamaModel].self, from: encoded)
-        else {
-            return
-        }
-
+        else { return }
         installedModels = decoded.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-
-        if let savedModelName = defaults.string(forKey: DefaultsKeys.selectedModelName),
-           let savedModel = installedModels.first(where: { $0.name == savedModelName }) {
-            selectedModel = savedModel
-        } else {
-            selectedModel = installedModels.first
         }
     }
 
     private func userFacingError(for error: Error, fallback: String) -> String {
-        if error is CancellationError {
-            return "Request cancelled."
-        }
-
+        if error is CancellationError { return "Request cancelled." }
         if let proxyError = error as? ProxyError,
-           let message = proxyError.errorDescription,
-           !message.isEmpty {
+           let message = proxyError.errorDescription, !message.isEmpty {
             return message
         }
-
-        let localizedMessage = (error as NSError).localizedDescription
-        if !localizedMessage.isEmpty, localizedMessage != "(null)" {
-            return localizedMessage
-        }
-
+        let msg = (error as NSError).localizedDescription
+        if !msg.isEmpty, msg != "(null)" { return msg }
         return fallback
-    }
-
-    private func recommendModel(for intent: ChatIntent) -> OllamaModel? {
-        installedModels.max { lhs, rhs in
-            score(lhs, for: intent) < score(rhs, for: intent)
-        }
-    }
-
-    private func score(_ model: OllamaModel, for intent: ChatIntent) -> Int {
-        let name = model.name.lowercased()
-
-        switch intent {
-        case .coding:
-            if name.contains("coder") || name.contains("code") || name.contains("codellama") { return 100 }
-            if name.contains("qwen") || name.contains("deepseek") { return 80 }
-            if name.contains("llama") || name.contains("mistral") { return 60 }
-            return 30
-
-        case .writing:
-            if name.contains("mistral") || name.contains("llama") { return 100 }
-            if name.contains("qwen") || name.contains("gemma") { return 80 }
-            if name.contains("phi") { return 60 }
-            return 30
-
-        case .research:
-            if name.contains("deepseek") || name.contains("r1") { return 100 }
-            if name.contains("qwen") || name.contains("mistral") { return 85 }
-            if name.contains("llama") { return 70 }
-            return 30
-
-        case .chat:
-            if name.contains("3b") || name.contains("mini") || name.contains("2b") { return 100 }
-            if name.contains("llama") || name.contains("gemma") || name.contains("phi") { return 80 }
-            if name.contains("qwen") || name.contains("mistral") { return 70 }
-            return 30
-        }
     }
 }
 

@@ -72,7 +72,7 @@ struct ModelManagerView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Pasture for Mac")
+                Text("Pasture")
                     .font(.system(.title2, design: .rounded, weight: .semibold))
                 Text("Manage Ollama models without Terminal.")
                     .font(.system(.subheadline, design: .rounded))
@@ -135,6 +135,7 @@ private struct CuratedLibraryTab: View {
 private struct InstalledModelsTab: View {
     @ObservedObject var viewModel: ModelManagerViewModel
     let accentColor: Color
+    @State private var pendingDeleteModel: OllamaModel?
 
     var body: some View {
         Group {
@@ -166,7 +167,7 @@ private struct InstalledModelsTab: View {
                             .frame(minWidth: 72, alignment: .trailing)
 
                         Button(role: .destructive) {
-                            Task { await viewModel.deleteInstalledModel(named: model.name) }
+                            pendingDeleteModel = model
                         } label: {
                             if viewModel.deletingModelName == model.name {
                                 ProgressView()
@@ -184,6 +185,23 @@ private struct InstalledModelsTab: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .confirmationDialog(
+            "Delete \(pendingDeleteModel?.name ?? "this model")?",
+            isPresented: Binding(
+                get: { pendingDeleteModel != nil },
+                set: { if !$0 { pendingDeleteModel = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let model = pendingDeleteModel {
+                Button("Delete \(model.name)", role: .destructive) {
+                    Task { await viewModel.deleteInstalledModel(named: model.name) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteModel = nil }
+        } message: {
+            Text("This permanently removes the model from Ollama. You can re-download it later.")
+        }
     }
 
     private func modelDescription(for model: OllamaModel) -> String {

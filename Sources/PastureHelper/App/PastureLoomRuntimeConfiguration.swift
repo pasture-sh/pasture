@@ -1,4 +1,5 @@
 import Foundation
+import Loom
 import LoomKit
 import LoomCloudKit
 
@@ -15,8 +16,19 @@ enum PastureLoomRuntimeConfiguration {
             serviceType: serviceType,
             serviceName: serviceName,
             cloudKit: cloudKitConfiguration(bundle: bundle),
+            overlayDirectory: overlayDirectoryConfiguration(),
             trust: .sameAccountAutoTrust,
             advertisementMetadata: serviceMetadata
+        )
+    }
+
+    /// On the Mac, we always start the overlay probe server so iPhones can
+    /// discover this Mac via Tailscale or any other overlay network.
+    /// The seed provider is empty because the Mac is the host, not the seeker.
+    static func overlayDirectoryConfiguration() -> LoomOverlayDirectoryConfiguration {
+        LoomOverlayDirectoryConfiguration(
+            probePort: Loom.defaultOverlayProbePort,
+            seedProvider: { [] }
         )
     }
 

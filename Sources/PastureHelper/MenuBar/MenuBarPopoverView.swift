@@ -9,6 +9,9 @@ struct MenuBarPopoverView: View {
     let onManageModels: () -> Void
     let onClearDiagnostics: () -> Void
     @State private var showDiagnostics = false
+    @State private var showTailscaleSetup = false
+    @State private var copiedIP = false
+    @StateObject private var tailscale = TailscaleMonitor()
     private let accentColor = Color(red: 0.96, green: 0.78, blue: 0.26)
 
     var body: some View {
@@ -16,9 +19,9 @@ struct MenuBarPopoverView: View {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 HStack {
-                    Image(systemName: "hare.fill")
+                    Image(systemName: "leaf.fill")
                         .foregroundStyle(accentColor)
-                    Text("Pasture for Mac")
+                    Text("Pasture")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
                     Spacer()
                 }
@@ -26,11 +29,7 @@ struct MenuBarPopoverView: View {
                 Divider()
 
                 // Ollama status
-                StatusRow(
-                    icon: "circle.fill",
-                    iconColor: ollamaStatusColor,
-                    label: ollamaStatusLabel
-                )
+                ollamaStatusSection
 
                 // Connected iPhone
                 StatusRow(
@@ -62,6 +61,10 @@ struct MenuBarPopoverView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+
+                Divider()
+
+                remoteAccessSection
 
                 Divider()
 
@@ -124,7 +127,7 @@ struct MenuBarPopoverView: View {
                     .tint(accentColor)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
 
-                Button("Quit Pasture for Mac") {
+                Button("Quit Pasture") {
                     NSApplication.shared.terminate(nil)
                 }
                 .foregroundStyle(.secondary)
@@ -133,12 +136,128 @@ struct MenuBarPopoverView: View {
             }
             .padding()
         }
-        .frame(width: 300, height: 420)
+        .frame(width: 300, height: 480)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .colorScheme(.dark)
         .fontDesign(.rounded)
+        .onAppear { tailscale.refresh() }
     }
 }
 
 private extension MenuBarPopoverView {
+    // MARK: Ollama status
+
+    @ViewBuilder var ollamaStatusSection: some View {
+        StatusRow(
+            icon: "circle.fill",
+            iconColor: ollamaStatusColor,
+            label: ollamaStatusLabel
+        )
+
+        if !advertiser.ollamaIsReachable {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Ollama needs to be running on this Mac for Pasture to work.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
+                        Button("Open Ollama") {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Ollama.app"))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(accentColor)
+                        .controlSize(.small)
+                    }
+
+                    Button("Download Ollama →") {
+                        NSWorkspace.shared.open(URL(string: "https://ollama.com")!)
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
+            }
+            .padding(.leading, 24)
+        }
+    }
+
+    // MARK: Remote Access
+
+    @ViewBuilder var remoteAccessSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Remote Access")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if tailscale.isActive, let ip = tailscale.tailscaleIP {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 8, height: 8)
+                    Text("Tailscale active")
+                        .font(.callout)
+                }
+
+                HStack(spacing: 6) {
+                    Text(ip)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+
+                    Spacer()
+
+                    Button(copiedIP ? "Copied!" : "Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(ip, forType: .string)
+                        copiedIP = true
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            copiedIP = false
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .tint(copiedIP ? .green : nil)
+                }
+
+                Text("Copy this IP, then open Pasture on your iPhone → Settings → Tailscale Remote Access and paste it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.5))
+                        .frame(width: 8, height: 8)
+                    Text("Tailscale not detected")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                DisclosureGroup("How to set up remote access", isExpanded: $showTailscaleSetup) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        RemoteAccessStep(number: "1", text: "Install Tailscale on this Mac and sign in at tailscale.com.")
+                        RemoteAccessStep(number: "2", text: "Install Tailscale on your iPhone and sign in to the same account.")
+                        RemoteAccessStep(number: "3", text: "Come back here — your Tailscale IP will appear and you can copy it to Pasture on your iPhone.")
+
+                        Button("Open tailscale.com →") {
+                            NSWorkspace.shared.open(URL(string: "https://tailscale.com/download")!)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.link)
+                        .padding(.top, 2)
+                    }
+                    .padding(.top, 4)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Diagnostics helpers
+
     func formattedTimestamp(_ date: Date) -> String {
         Self.diagnosticsTimeFormatter.string(from: date)
     }
@@ -231,6 +350,24 @@ private struct DiagnosticValueRow: View {
             Text(value)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
+        }
+    }
+}
+
+private struct RemoteAccessStep: View {
+    let number: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(number + ".")
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, alignment: .trailing)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

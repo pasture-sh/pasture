@@ -25,6 +25,6 @@ struct PastureApp: App {
                 .environmentObject(connectionManager)
         }
         .loomContainer(loomContainer, autostart: false)
-        .modelContainer(for: [ConversationHistoryRecord.self])
+        .modelContainer(for: [ConversationRecord.self, MessageRecord.self])
     }
 }

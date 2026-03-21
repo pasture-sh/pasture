@@ -18,15 +18,15 @@ struct PastureHelperApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let loomContainer = try! LoomContainer(
         for: PastureLoomRuntimeConfiguration.makeConfiguration(
-            serviceName: Host.current().localizedName ?? "Pasture for Mac"
+            serviceName: Host.current().localizedName ?? "Pasture"
         )
     )
     private var menuBarController: MenuBarController?
+    private let onboardingController = OnboardingWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBarController = MenuBarController(
-            loomContext: loomContainer.mainContext
-        )
+        menuBarController = MenuBarController(loomContext: loomContainer.mainContext)
+        onboardingController.showIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

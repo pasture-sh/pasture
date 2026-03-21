@@ -7,20 +7,26 @@ import UIKit
 
 struct ChatView: View {
     @EnvironmentObject var connection: ConnectionManager
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var viewModel: ChatViewModel
     @State private var isShowingSettings = false
-    @State private var isShowingNewChatConfirmation = false
     @State private var chatEnvironment = ModelEnvironment.chat(for: nil)
     @State private var hasInitializedTheme = false
+
+    init(conversation: ConversationRecord, modelContext: ModelContext) {
+        _viewModel = StateObject(
+            wrappedValue: ChatViewModel(conversation: conversation, modelContext: modelContext)
+        )
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
             EnvironmentBackground(environment: backgroundEnvironment)
                 .id(backgroundEnvironment.id)
                 .transition(.opacity)
+                .ignoresSafeArea()
 
             if viewModel.isLoadingModels {
                 LoadingModelsView(palette: backgroundEnvironment.palette)
@@ -40,13 +46,6 @@ struct ChatView: View {
                         await viewModel.loadModels(connection: connection)
                     }
                 )
-            } else if viewModel.shouldShowIntentPicker {
-                IntentPickerView(
-                    palette: ModelEnvironment.onboardingDefault.palette,
-                    reduceTransparency: reduceTransparency
-                ) { intent in
-                    viewModel.chooseIntent(intent)
-                }
             } else {
                 chatContent
             }
@@ -65,8 +64,8 @@ struct ChatView: View {
             }
         }
         .fontDesign(.rounded)
+        .toolbar(.hidden, for: .navigationBar)
         .task {
-            viewModel.bootstrapPersistence(modelContext: modelContext)
             await viewModel.loadModels(connection: connection)
             refreshChatEnvironment(modelName: viewModel.selectedModel?.name, animated: false)
         }
@@ -86,22 +85,10 @@ struct ChatView: View {
             ChatSettingsView()
                 .environmentObject(connection)
         }
-        .confirmationDialog(
-            "Start a new chat?",
-            isPresented: $isShowingNewChatConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("New Chat", role: .destructive) {
-                viewModel.startNewChat()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This clears the current conversation on this device.")
-        }
     }
 
     private var isPreModelFlow: Bool {
-        viewModel.isLoadingModels || viewModel.needsModelSetup || viewModel.shouldShowIntentPicker
+        viewModel.isLoadingModels || viewModel.needsModelSetup
     }
 
     private var backgroundEnvironment: ModelEnvironment {
@@ -114,6 +101,28 @@ struct ChatView: View {
 
     private var shouldShowConnectionRecoveryBanner: Bool {
         !isPreModelFlow && !connection.isConnected
+    }
+
+    private var assistantBubbleBackground: Color {
+        switch chatEnvironment.timeOfDay {
+        case .morning, .afternoon:
+            return .white.opacity(0.85)
+        case .evening:
+            return Color(red: 0.96, green: 0.91, blue: 0.83).opacity(0.90)
+        case .night:
+            return chatEnvironment.isLateNight
+                ? Color(red: 0.16, green: 0.15, blue: 0.13).opacity(0.93)
+                : Color(red: 0.21, green: 0.20, blue: 0.18).opacity(0.92)
+        }
+    }
+
+    private var assistantBubbleText: Color {
+        switch chatEnvironment.timeOfDay {
+        case .morning, .afternoon, .evening:
+            return .black.opacity(0.82)
+        case .night:
+            return .white.opacity(0.88)
+        }
     }
 
     private var chatContent: some View {
@@ -153,31 +162,38 @@ struct ChatView: View {
                         ForEach(viewModel.messages) { message in
                             MessageBubble(
                                 message: message,
-                                userBubbleColor: chatPalette.userBubble
+                                userBubbleColor: chatPalette.userBubble,
+                                assistantBackground: assistantBubbleBackground,
+                                assistantText: assistantBubbleText
                             )
                                 .id(message.id)
                         }
                         if viewModel.isStreaming {
-                            StreamingBubble(text: viewModel.streamingText)
+                            StreamingBubble(
+                                text: viewModel.streamingText,
+                                background: assistantBubbleBackground,
+                                textColor: assistantBubbleText
+                            )
                                 .id("streaming")
                         }
                     }
                     .padding(.top, 12)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 16)
                     .padding(.horizontal, 16)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    ComposeBar(
+                        palette: chatPalette,
+                        reduceTransparency: reduceTransparency,
+                        isDisabled: viewModel.isStreaming || viewModel.selectedModel == nil || !connection.isConnected
+                    ) { text in
+                        await viewModel.send(text: text, connection: connection)
+                    }
+                }
                 .onChange(of: viewModel.streamingText) { _, _ in
                     withAnimation { proxy.scrollTo("streaming") }
                 }
-            }
-
-            ComposeBar(
-                palette: chatPalette,
-                reduceTransparency: reduceTransparency,
-                isDisabled: viewModel.isStreaming || viewModel.selectedModel == nil || !connection.isConnected
-            ) { text in
-                await viewModel.send(text: text, connection: connection)
             }
         }
     }
@@ -185,6 +201,14 @@ struct ChatView: View {
     @ViewBuilder
     private var topBarStrip: some View {
         let controls = HStack(spacing: 12) {
+            TopBarCircleButton(
+                systemName: "chevron.left",
+                palette: chatPalette,
+                reduceTransparency: reduceTransparency
+            ) {
+                dismiss()
+            }
+
             if !viewModel.installedModels.isEmpty {
                 ModelPickerChip(
                     models: viewModel.installedModels,
@@ -197,19 +221,6 @@ struct ChatView: View {
             }
 
             Spacer()
-
-            TopBarCircleButton(
-                systemName: "square.and.pencil",
-                palette: chatPalette,
-                reduceTransparency: reduceTransparency,
-                isEnabled: !viewModel.isStreaming
-            ) {
-                if viewModel.hasMessages {
-                    isShowingNewChatConfirmation = true
-                } else {
-                    viewModel.startNewChat()
-                }
-            }
 
             TopBarCircleButton(
                 systemName: "gearshape.fill",
@@ -255,228 +266,18 @@ struct ChatSettingsView: View {
     @State private var downloadTask: Task<Void, Never>?
     @State private var isShowingDiagnostics = false
     @State private var copiedDiagnostics = false
+    @AppStorage(PastureLoomRuntimeConfiguration.tailscaleHostnameKey)
+    private var tailscaleHostname: String = ""
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Connection") {
-                    HStack(spacing: 10) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 10, height: 10)
-                        Text(statusText)
-                            .font(.system(.body, design: .rounded))
-                    }
-                }
-
-                Section("Advanced Diagnostics") {
-                    DisclosureGroup("Connection runtime health", isExpanded: $isShowingDiagnostics) {
-                        LabeledContent("Discovery starts", value: "\(connection.diagnostics.discoveryStarts)")
-                        LabeledContent("Peer refreshes", value: "\(connection.diagnostics.peerRefreshes)")
-                        LabeledContent("Visible peers", value: "\(connection.diagnostics.visiblePeerCount)")
-                        LabeledContent("Visible helpers", value: "\(connection.diagnostics.visibleHelperCount)")
-                        LabeledContent("Connect attempts", value: "\(connection.diagnostics.connectAttempts)")
-                        LabeledContent("Connect successes", value: "\(connection.diagnostics.connectSuccesses)")
-                        LabeledContent("Reconnect schedules", value: "\(connection.diagnostics.reconnectSchedules)")
-                        LabeledContent("Reconnect exhausted", value: "\(connection.diagnostics.reconnectExhausted)")
-                        LabeledContent("Disconnects", value: "\(connection.diagnostics.disconnects)")
-                        LabeledContent("Requests sent", value: "\(connection.diagnostics.requestsSent)")
-                        LabeledContent("Responses received", value: "\(connection.diagnostics.responsesReceived)")
-                        LabeledContent("Decode failures", value: "\(connection.diagnostics.responseDecodeFailures)")
-                        LabeledContent("Request timeouts", value: "\(connection.diagnostics.requestTimeouts)")
-                        LabeledContent("Remote errors", value: "\(connection.diagnostics.remoteErrors)")
-                        LabeledContent("Chat cancellations", value: "\(connection.diagnostics.chatStreamCancellations)")
-                        LabeledContent("Pull cancellations", value: "\(connection.diagnostics.pullStreamCancellations)")
-
-                        if let lastError = connection.diagnostics.lastError, !lastError.isEmpty {
-                            Text(lastError)
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(.red)
-                                .padding(.top, 4)
-                        }
-
-                        if let loomRuntimeError = connection.diagnostics.loomRuntimeError,
-                           !loomRuntimeError.isEmpty {
-                            Text("Loom runtime: \(loomRuntimeError)")
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(.orange)
-                                .padding(.top, 2)
-                        }
-
-                        if let peerSummary = connection.diagnostics.lastPeerSnapshotSummary,
-                           !peerSummary.isEmpty {
-                            Text(peerSummary)
-                                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 2)
-                        }
-
-                        if diagnosticsEvents.isEmpty {
-                            Text("No diagnostic events yet.")
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 4)
-                        } else {
-                            ForEach(diagnosticsEvents) { event in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("[\(event.level.rawValue.uppercased())] \(formattedTimestamp(event.timestamp))")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(eventColor(for: event.level))
-                                    Text(event.message)
-                                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 2)
-                            }
-                        }
-
-                        HStack {
-                            Button("Clear diagnostics") {
-                                connection.clearDiagnostics()
-                                copiedDiagnostics = false
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-
-                            Spacer()
-
-                            Button(copiedDiagnostics ? "Copied" : "Copy") {
-                                copyDiagnosticsToPasteboard()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-
-                Section("Available Macs") {
-                    if connection.availableHelpers.isEmpty {
-                        Text("No Macs found right now.")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(connection.availableHelpers) { peer in
-                            Button {
-                                Task { await connection.connectToHelper(peerID: peer.id) }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(peer.name)
-                                            .font(.system(.body, design: .rounded, weight: .semibold))
-                                            .foregroundStyle(.primary)
-                                        Text(peer.isNearby ? "Nearby" : "Reachable")
-                                            .font(.system(.caption, design: .rounded))
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    if connection.connectedPeerID == peer.id {
-                                        Text("Connected")
-                                            .font(.system(.caption, design: .rounded, weight: .semibold))
-                                            .foregroundStyle(.green)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                Section("Get More Models") {
-                    if !connection.isConnected {
-                        Text("Reconnect to your Mac to download models.")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if availableRecommendedModels.isEmpty {
-                        Text("All recommended models are already installed.")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(availableRecommendedModels) { model in
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(model.displayName)
-                                        .font(.system(.body, design: .rounded, weight: .semibold))
-                                    Text(model.description)
-                                        .font(.system(.caption, design: .rounded))
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Button {
-                                    startDownload(model)
-                                } label: {
-                                    if activeDownload?.modelID == model.id {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Text("Download")
-                                    }
-                                }
-                                .disabled(activeDownload != nil || !connection.isConnected)
-                            }
-                        }
-                    }
-
-                    if let activeDownload {
-                        ActiveDownloadCard(
-                            state: activeDownload,
-                            onCancel: cancelActiveDownload
-                        )
-                    }
-
-                    if let downloadErrorMessage {
-                        Text(downloadErrorMessage)
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                Section("Installed Models") {
-                    if connection.installedModels.isEmpty {
-                        Text("No models installed yet.")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(connection.installedModels) { model in
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(model.name)
-                                        .font(.system(.body, design: .rounded, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(modelSubtitle(model))
-                                        .font(.system(.caption, design: .rounded))
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Button(role: .destructive) {
-                                    pendingDeleteModel = model
-                                } label: {
-                                    if deletingModelName == model.name {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Text("Delete")
-                                    }
-                                }
-                                .disabled(deletingModelName != nil || !connection.isConnected)
-                            }
-                        }
-                    }
-
-                    if let deleteErrorMessage {
-                        Text(deleteErrorMessage)
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundStyle(.red)
-                    }
-                }
+                connectionSection
+                tailscaleSection
+                diagnosticsSection
+                availableMacsSection
+                getMoreModelsSection
+                installedModelsSection
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -568,6 +369,285 @@ struct ChatSettingsView: View {
                 $0.name == model.id || $0.name.hasPrefix("\(model.id):")
             }
         }
+    }
+
+    private var connectionSection: some View {
+        Section("Connection") {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 10, height: 10)
+                Text(statusText)
+                    .font(.system(.body, design: .rounded))
+            }
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section("Advanced Diagnostics") {
+            DisclosureGroup("Connection runtime health", isExpanded: $isShowingDiagnostics) {
+                diagnosticsCounters
+                diagnosticsErrorTexts
+                diagnosticsEventsList
+                diagnosticsButtons
+            }
+        }
+    }
+
+    @ViewBuilder private var diagnosticsErrorTexts: some View {
+        if let lastError = connection.diagnostics.lastError, !lastError.isEmpty {
+            Text(lastError)
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.red)
+                .padding(.top, 4)
+        }
+        if let loomRuntimeError = connection.diagnostics.loomRuntimeError, !loomRuntimeError.isEmpty {
+            Text("Loom runtime: \(loomRuntimeError)")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.orange)
+                .padding(.top, 2)
+        }
+        if let peerSummary = connection.diagnostics.lastPeerSnapshotSummary, !peerSummary.isEmpty {
+            Text(peerSummary)
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+        }
+    }
+
+    @ViewBuilder private var diagnosticsEventsList: some View {
+        if diagnosticsEvents.isEmpty {
+            Text("No diagnostic events yet.")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        } else {
+            ForEach(diagnosticsEvents) { event in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("[\(event.level.rawValue.uppercased())] \(formattedTimestamp(event.timestamp))")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(eventColor(for: event.level))
+                    Text(event.message)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var diagnosticsButtons: some View {
+        HStack {
+            Button("Clear diagnostics") {
+                connection.clearDiagnostics()
+                copiedDiagnostics = false
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Spacer()
+            Button(copiedDiagnostics ? "Copied" : "Copy") {
+                copyDiagnosticsToPasteboard()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.top, 4)
+    }
+
+    private var availableMacsSection: some View {
+        Section("Available Macs") {
+            if connection.availableHelpers.isEmpty {
+                Text("No Macs found right now.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(connection.availableHelpers) { peer in
+                    Button {
+                        Task { await connection.connectToHelper(peerID: peer.id) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(peer.name)
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Text(peer.isNearby ? "Nearby" : "Reachable")
+                                    .font(.system(.caption, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if connection.connectedPeerID == peer.id.deviceID {
+                                Text("Connected")
+                                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var getMoreModelsSection: some View {
+        Section("Get More Models") {
+            if !connection.isConnected {
+                Text("Reconnect to your Mac to download models.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            if availableRecommendedModels.isEmpty {
+                Text("All recommended models are already installed.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(availableRecommendedModels) { model in
+                    modelDownloadRow(model)
+                }
+            }
+            if let activeDownload {
+                ActiveDownloadCard(state: activeDownload, onCancel: cancelActiveDownload)
+            }
+            if let downloadErrorMessage {
+                Text(downloadErrorMessage)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func modelDownloadRow(_ model: CuratedModel) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.displayName)
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                Text(model.description)
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                startDownload(model)
+            } label: {
+                if activeDownload?.modelID == model.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Download")
+                }
+            }
+            .disabled(activeDownload != nil || !connection.isConnected)
+        }
+    }
+
+    private var installedModelsSection: some View {
+        Section("Installed Models") {
+            if connection.installedModels.isEmpty {
+                Text("No models installed yet.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(connection.installedModels) { model in
+                    modelDeleteRow(model)
+                }
+            }
+            if let deleteErrorMessage {
+                Text(deleteErrorMessage)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func modelDeleteRow(_ model: OllamaModel) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.name)
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(modelSubtitle(model))
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(role: .destructive) {
+                pendingDeleteModel = model
+            } label: {
+                if deletingModelName == model.name {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Delete")
+                }
+            }
+            .disabled(deletingModelName != nil || !connection.isConnected)
+        }
+    }
+
+    @ViewBuilder private var diagnosticsCounters: some View {
+        LabeledContent("Discovery starts", value: "\(connection.diagnostics.discoveryStarts)")
+        LabeledContent("Peer refreshes", value: "\(connection.diagnostics.peerRefreshes)")
+        LabeledContent("Visible peers", value: "\(connection.diagnostics.visiblePeerCount)")
+        LabeledContent("Visible helpers", value: "\(connection.diagnostics.visibleHelperCount)")
+        LabeledContent("Connect attempts", value: "\(connection.diagnostics.connectAttempts)")
+        LabeledContent("Connect successes", value: "\(connection.diagnostics.connectSuccesses)")
+        LabeledContent("Reconnect schedules", value: "\(connection.diagnostics.reconnectSchedules)")
+        LabeledContent("Reconnect exhausted", value: "\(connection.diagnostics.reconnectExhausted)")
+        LabeledContent("Disconnects", value: "\(connection.diagnostics.disconnects)")
+        LabeledContent("Requests sent", value: "\(connection.diagnostics.requestsSent)")
+        LabeledContent("Responses received", value: "\(connection.diagnostics.responsesReceived)")
+        LabeledContent("Decode failures", value: "\(connection.diagnostics.responseDecodeFailures)")
+        LabeledContent("Request timeouts", value: "\(connection.diagnostics.requestTimeouts)")
+        LabeledContent("Remote errors", value: "\(connection.diagnostics.remoteErrors)")
+        LabeledContent("Chat cancellations", value: "\(connection.diagnostics.chatStreamCancellations)")
+        LabeledContent("Pull cancellations", value: "\(connection.diagnostics.pullStreamCancellations)")
+    }
+
+    private var tailscaleSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Mac Hostname or IP")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                TextField("e.g. my-mac.tailnet-name.ts.net", text: $tailscaleHostname)
+                    .font(.system(.body, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .onSubmit { saveTailscaleHostname() }
+                if !tailscaleHostname.isEmpty {
+                    Button("Save") { saveTailscaleHostname() }
+                        .font(.system(.footnote, design: .rounded, weight: .semibold))
+                }
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("Tailscale Remote Access")
+        } footer: {
+            tailscaleSectionFooter
+        }
+    }
+
+    private var tailscaleSectionFooter: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Use Pasture from anywhere by connecting your Mac and iPhone to the same Tailscale network. Enter your Mac's Tailscale hostname or IP above and Pasture will discover it automatically.")
+            DisclosureGroup("Setup instructions") {
+                VStack(alignment: .leading, spacing: 6) {
+                    TailscaleStep(number: "1", text: "Install Tailscale on your Mac and sign in at tailscale.com.")
+                    TailscaleStep(number: "2", text: "Install the Tailscale app on your iPhone and sign in to the same account.")
+                    TailscaleStep(number: "3", text: "On your Mac, open Tailscale from the menu bar and copy your MagicDNS hostname (e.g. my-mac.tailnet-name.ts.net) or IP address (starts with 100.).")
+                    TailscaleStep(number: "4", text: "Make sure Ollama is running on your Mac and PastureHelper is active.")
+                    TailscaleStep(number: "5", text: "Paste your Mac's hostname or IP in the field above and tap Save. Pasture will connect within 30 seconds.")
+                }
+                .padding(.top, 4)
+            }
+            .font(.system(.caption, design: .rounded))
+            .foregroundStyle(.secondary)
+        }
+        .font(.system(.caption, design: .rounded))
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+    }
+
+    private func saveTailscaleHostname() {
+        // @AppStorage already writes immediately; this just dismisses the keyboard.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func refreshData() async {
@@ -1080,14 +1160,23 @@ struct ModelPickerChip: View {
     var body: some View {
         Menu {
             ForEach(models) { model in
-                Button(model.name) {
+                Button {
                     onSelect(model)
+                } label: {
+                    Label(model.name, systemImage: modelIcon(for: model.name))
                 }
             }
         } label: {
             HStack(spacing: 6) {
-                Text(selectedModelName ?? "Select model")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(selectedModelName ?? "Select model")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    if let hint = modelHint(for: selectedModelName) {
+                        Text(hint)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .opacity(0.65)
+                    }
+                }
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .semibold))
             }
@@ -1111,6 +1200,36 @@ struct ModelPickerChip: View {
         })
         .modifier(ModelChipSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency))
     }
+
+    private func modelHint(for name: String?) -> String? {
+        guard let lower = name?.lowercased() else { return nil }
+        if lower.contains("code") || lower.contains("coder") || lower.contains("starcoder") {
+            return "Great for coding"
+        }
+        if lower.contains("r1") || lower.contains("think") || lower.contains("reason") {
+            return "Great for reasoning"
+        }
+        switch ModelComplexity.from(modelName: name) {
+        case .small: return "Fast & lightweight"
+        case .large: return "Best for complex tasks"
+        case .medium: return nil
+        }
+    }
+
+    private func modelIcon(for name: String?) -> String {
+        guard let lower = name?.lowercased() else { return "cpu" }
+        if lower.contains("code") || lower.contains("coder") || lower.contains("starcoder") {
+            return "chevron.left.forwardslash.chevron.right"
+        }
+        if lower.contains("r1") || lower.contains("think") || lower.contains("reason") {
+            return "brain"
+        }
+        switch ModelComplexity.from(modelName: name) {
+        case .small: return "photo"
+        case .large: return "star.fill"
+        case .medium: return "cpu"
+        }
+    }
 }
 
 // MARK: - Message bubble
@@ -1118,89 +1237,150 @@ struct ModelPickerChip: View {
 struct MessageBubble: View {
     let message: Message
     let userBubbleColor: Color
+    var assistantBackground: Color = .white.opacity(0.85)
+    var assistantText: Color = .black.opacity(0.82)
 
     var body: some View {
-        HStack {
-            if message.role == "user" { Spacer() }
-
-            bubbleContent
-                .frame(maxWidth: 312, alignment: message.role == "user" ? .trailing : .leading)
-
-            if message.role != "user" { Spacer() }
+        if message.role == "user" {
+            HStack {
+                Spacer(minLength: 56)
+                userBubble
+            }
+        } else {
+            assistantBubble
         }
     }
 
+    private var userBubble: some View {
+        Text(message.content)
+            .font(.system(size: 16, weight: .regular, design: .rounded))
+            .padding(.horizontal, 15)
+            .padding(.vertical, 12)
+            .background(userBubbleColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .foregroundStyle(.white)
+    }
+
     @ViewBuilder
-    private var bubbleContent: some View {
-        if message.role == "user" {
-            Text(message.content)
-                .font(.system(size: 16, weight: .regular, design: .rounded))
-                .padding(.horizontal, 15)
-                .padding(.vertical, 12)
-                .background(userBubbleColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .foregroundStyle(.white)
-        } else {
-            Markdown(message.content)
-                .markdownTheme(.basic)
-                .markdownTextStyle {
-                    ForegroundColor(.black.opacity(0.82))
-                    BackgroundColor(nil)
-                }
-                .markdownTextStyle(\.link) {
-                    ForegroundColor(.blue.opacity(0.9))
-                }
-                .textSelection(.enabled)
-                .padding(.horizontal, 15)
-                .padding(.vertical, 12)
-                .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
-                }
-        }
+    private var assistantBubble: some View {
+        Markdown(message.content)
+            .markdownTheme(.basic)
+            .markdownTextStyle {
+                ForegroundColor(assistantText)
+                BackgroundColor(nil)
+            }
+            .markdownTextStyle(\.code) {
+                FontFamilyVariant(.monospaced)
+                FontSize(.em(0.88))
+                ForegroundColor(Color(red: 0.40, green: 0.20, blue: 0.06))
+                BackgroundColor(Color(red: 0.96, green: 0.93, blue: 0.88))
+            }
+            .markdownTextStyle(\.link) {
+                ForegroundColor(.blue.opacity(0.9))
+            }
+            .markdownBlockStyle(\.codeBlock) { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.22))
+                    .markdownTextStyle {
+                        FontFamilyVariant(.monospaced)
+                        FontSize(.em(0.84))
+                        ForegroundColor(Color(red: 0.20, green: 0.20, blue: 0.20))
+                        BackgroundColor(nil)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(red: 0.95, green: 0.91, blue: 0.86), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.vertical, 3)
+            }
+            .textSelection(.enabled)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 12)
+            .background(assistantBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(assistantText.opacity(0.10), lineWidth: 0.5)
+            }
     }
 }
 
 struct StreamingBubble: View {
     let text: String
+    var background: Color = .white.opacity(0.85)
+    var textColor: Color = .black.opacity(0.82)
     @State private var cursorVisible = false
 
     var body: some View {
-        HStack {
-            ZStack(alignment: .bottomTrailing) {
-                Markdown(text.isEmpty ? " " : text)
+        VStack(alignment: .leading, spacing: 0) {
+            if !text.isEmpty {
+                Markdown(text)
                     .markdownTheme(.basic)
                     .markdownTextStyle {
-                        ForegroundColor(.black.opacity(0.82))
+                        ForegroundColor(textColor)
                         BackgroundColor(nil)
+                    }
+                    .markdownTextStyle(\.code) {
+                        FontFamilyVariant(.monospaced)
+                        FontSize(.em(0.88))
+                        ForegroundColor(Color(red: 0.40, green: 0.20, blue: 0.06))
+                        BackgroundColor(Color(red: 0.96, green: 0.93, blue: 0.88))
                     }
                     .markdownTextStyle(\.link) {
                         ForegroundColor(.blue.opacity(0.9))
                     }
+                    .markdownBlockStyle(\.codeBlock) { configuration in
+                        configuration.label
+                            .relativeLineSpacing(.em(0.22))
+                            .markdownTextStyle {
+                                FontFamilyVariant(.monospaced)
+                                FontSize(.em(0.84))
+                                ForegroundColor(Color(red: 0.20, green: 0.20, blue: 0.20))
+                                BackgroundColor(nil)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(red: 0.95, green: 0.91, blue: 0.86), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .padding(.vertical, 3)
+                    }
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
-                Text("▍")
-                    .opacity(cursorVisible ? 1 : 0.35)
-                    .foregroundStyle(Color.black.opacity(0.66))
-                    .padding(.trailing, 2)
-                    .padding(.bottom, 1)
-            }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 12)
-            .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(.white.opacity(0.18), lineWidth: 0.5)
-            }
-            .frame(maxWidth: 312, alignment: .leading)
-            Spacer()
+            Text("▍")
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .opacity(cursorVisible ? 1 : 0.25)
+                .foregroundStyle(textColor.opacity(0.55))
+                .padding(.top, text.isEmpty ? 0 : 8)
         }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+        .background(background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 0.5)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
                 cursorVisible = true
             }
         }
+    }
+}
+
+// MARK: - Tailscale step helper
+
+private struct TailscaleStep: View {
+    let number: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number + ".")
+                .fontWeight(.semibold)
+                .frame(width: 16, alignment: .leading)
+            Text(text)
+        }
+        .font(.system(.caption, design: .rounded))
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -1228,6 +1408,14 @@ struct ComposeBar: View {
             .focused($focused)
             .lineLimit(1...5)
             .disabled(isDisabled)
+            .submitLabel(.send)
+            .onSubmit { submit() }
+            .onChange(of: text) { _, newValue in
+                if newValue.contains("\n") {
+                    text = newValue.replacingOccurrences(of: "\n", with: "")
+                    submit()
+                }
+            }
 
             sendButton
         }
@@ -1236,24 +1424,19 @@ struct ComposeBar: View {
         .modifier(ComposeBarSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency))
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    focused = false
-                }
-                .font(.system(.body, design: .rounded, weight: .semibold))
-            }
-        }
+    }
+
+    private func submit() {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isDisabled else { return }
+        text = ""
+        Task { await onSend(trimmed) }
     }
 
     @ViewBuilder
     private var sendButton: some View {
         Button {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
-            text = ""
-            Task { await onSend(trimmed) }
+            submit()
         } label: {
             Image(systemName: "arrow.up")
                 .font(.system(size: 14, weight: .semibold))
@@ -1270,13 +1453,7 @@ struct ComposeBar: View {
 
     @ViewBuilder
     private var buttonBackground: some View {
-        if canSend, #available(iOS 26.0, *), !reduceTransparency {
-            Circle()
-                .fill(.clear)
-                .glassEffect(.regular.interactive(), in: Circle())
-        } else {
-            Circle().fill(canSend ? palette.userBubble : .white.opacity(0.2))
-        }
+        Circle().fill(canSend ? palette.userBubble : .white.opacity(0.2))
     }
 
     private var canSend: Bool {

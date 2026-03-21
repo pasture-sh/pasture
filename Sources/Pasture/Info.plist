@@ -32,6 +32,11 @@
 	<string></string>
 	<key>PastureMacDownloadURL</key>
 	<string></string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Nunito-ExtraBold.ttf</string>
+		<string>Nunito-SemiBold.ttf</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

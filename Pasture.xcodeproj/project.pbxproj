@@ -8,11 +8,15 @@
 
 /* Begin PBXBuildFile section */
 		0D2AD80346F2F0A725671B84 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F0019919BE8E7183981CD3 /* RootView.swift */; };
+		138431A4A8A320A9A0ABE5C8 /* OnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A68B5D9E082AA06E78987D3 /* OnboardingWindowController.swift */; };
 		148C0A5438640C9B71E60E16 /* ModelManagerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9089F079A6419F1318796C49 /* ModelManagerViewModel.swift */; };
 		15127FEF85F6C6749210D946 /* PastureLoomRuntimeConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205041588057F44EFFBD6175 /* PastureLoomRuntimeConfiguration.swift */; };
 		15171B1127AAA8708B202B90 /* LoomCloudKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1D72C7EC674934F5D1E3D66 /* LoomCloudKit */; };
+		1F9B96FFC399D03C00555917 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7263A1606AE598CF4D1B8518 /* Nunito-ExtraBold.ttf */; };
+		22C7A02D205ABB92A67032DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0611E4B6848B23585387964 /* Assets.xcassets */; };
 		2798455CBBF20E52FE5BF158 /* EnvironmentBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8DFB494D9A6BA2D91A73BF /* EnvironmentBackground.swift */; };
 		27DD0A979C5996E63CD33740 /* PastureApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A3A8D0FA607878B4B705F6 /* PastureApp.swift */; };
+		38AB89302C5C03BBE3150F3F /* TailscaleMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7F2B069E1D5C35D693365F /* TailscaleMonitor.swift */; };
 		425514B60AE50FF9F5E35931 /* ConversationHistoryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CC12324A6864DDF9DFAB66B /* ConversationHistoryRecord.swift */; };
 		4283BA9D9C38497390F8A648 /* OllamaProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 712B163D18CA976D3F8CB16F /* OllamaProxy.swift */; };
 		42ECE5C9D6B4B9BF3620DF26 /* ModelEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8297D7888BE8D0B486000309 /* ModelEnvironment.swift */; };
@@ -33,12 +37,17 @@
 		985CF0A03E304470C7B61005 /* PastureHelperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E66BD6206A5E87959626ACD2 /* PastureHelperApp.swift */; };
 		BC555EF7903B1E4431FB9502 /* ConnectionRuntimePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF4E1E968348FD40A403B57 /* ConnectionRuntimePolicyTests.swift */; };
 		C400F9CDB71196812EF22129 /* OllamaAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55B5B12BDE2CF57443CA9AC6 /* OllamaAPIClient.swift */; };
+		C6332DDF2099D57CD90CE988 /* ConversationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B5F562DC35D1E878F8C49B /* ConversationRecord.swift */; };
 		CB9C7F43CFDFFBE849037F70 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DEEF8D6953AE8F57D6A02EC /* ModelManagerView.swift */; };
 		CBDFDC5B281EE33F11EAFE53 /* LoomKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B9CDBDE3217C44B29E4877C /* LoomKit */; };
 		D3F89D09C2BEECDB98CDFDC9 /* ChatIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B46DBB3F6BF212AD90ABA6 /* ChatIntent.swift */; };
 		D648DB60C88B5F55BD056187 /* LoomCloudKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0946FB92F558DD2072C62EA9 /* LoomCloudKit */; };
 		D74148461F89FDFE4C95F0CB /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03456A78E19B52E7543FA648 /* MenuBarPopoverView.swift */; };
+		E501C2371054D6F7C346F6F6 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D3E1950210C662300B6261 /* OnboardingView.swift */; };
 		EC625AC662D12B4B43A2B521 /* PastureLoomRuntimeConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBC72B01B6C63B741B9F57A /* PastureLoomRuntimeConfiguration.swift */; };
+		EDA9DE6523FB15D24985E5F5 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8555728FE2C7601E6BBA08 /* ConversationListView.swift */; };
+		EDAB1BDE7D130F0DE1BE2023 /* MessageRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B327D9D9FA11F32CD56DACC /* MessageRecord.swift */; };
+		F1727433F9C641EFA7F3C370 /* Nunito-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2AD75B2D5B5B53471691FAD9 /* Nunito-SemiBold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,11 +63,14 @@
 /* Begin PBXFileReference section */
 		03456A78E19B52E7543FA648 /* MenuBarPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopoverView.swift; sourceTree = "<group>"; };
 		037A6AB6E49C4DA9E13C3A61 /* CuratedModelLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuratedModelLibrary.swift; sourceTree = "<group>"; };
+		05D3E1950210C662300B6261 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		0BD1E31F210CC5D0D6672572 /* PastureHelper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PastureHelper.entitlements; sourceTree = "<group>"; };
 		10CA79A715DDAD2AA3F20B74 /* ModelEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelEnvironmentTests.swift; sourceTree = "<group>"; };
 		14FC463BBCF851DBE650ED27 /* CuratedModelLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuratedModelLibrary.swift; sourceTree = "<group>"; };
+		1A7F2B069E1D5C35D693365F /* TailscaleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleMonitor.swift; sourceTree = "<group>"; };
 		1B572530F1A5A85EB52D0895 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		205041588057F44EFFBD6175 /* PastureLoomRuntimeConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureLoomRuntimeConfiguration.swift; sourceTree = "<group>"; };
+		2AD75B2D5B5B53471691FAD9 /* Nunito-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-SemiBold.ttf"; sourceTree = "<group>"; };
 		2BBC72B01B6C63B741B9F57A /* PastureLoomRuntimeConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureLoomRuntimeConfiguration.swift; sourceTree = "<group>"; };
 		3AF4E1E968348FD40A403B57 /* ConnectionRuntimePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRuntimePolicyTests.swift; sourceTree = "<group>"; };
 		4DEEF8D6953AE8F57D6A02EC /* ModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerView.swift; sourceTree = "<group>"; };
@@ -66,24 +78,30 @@
 		50B46DBB3F6BF212AD90ABA6 /* ChatIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatIntent.swift; sourceTree = "<group>"; };
 		55B5B12BDE2CF57443CA9AC6 /* OllamaAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaAPIClient.swift; sourceTree = "<group>"; };
 		5C0E6D167FAFDD5BEBE5F8F1 /* Pasture.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Pasture.entitlements; sourceTree = "<group>"; };
+		63B5F562DC35D1E878F8C49B /* ConversationRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRecord.swift; sourceTree = "<group>"; };
+		6B327D9D9FA11F32CD56DACC /* MessageRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRecord.swift; sourceTree = "<group>"; };
 		6CC12324A6864DDF9DFAB66B /* ConversationHistoryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryRecord.swift; sourceTree = "<group>"; };
 		712B163D18CA976D3F8CB16F /* OllamaProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaProxy.swift; sourceTree = "<group>"; };
+		7263A1606AE598CF4D1B8518 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
 		7E82754615EE8A4D6DD43563 /* ModelManagerWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerWindowController.swift; sourceTree = "<group>"; };
 		7F8DFB494D9A6BA2D91A73BF /* EnvironmentBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBackground.swift; sourceTree = "<group>"; };
 		8297D7888BE8D0B486000309 /* ModelEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelEnvironment.swift; sourceTree = "<group>"; };
 		9089F079A6419F1318796C49 /* ModelManagerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerViewModel.swift; sourceTree = "<group>"; };
 		91B8C1B7E0F2513398EF0DED /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
-		9A0B89AC9BE33C10100E3E56 /* Pasture.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Pasture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A0B89AC9BE33C10100E3E56 /* Pasture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pasture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A68B5D9E082AA06E78987D3 /* OnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindowController.swift; sourceTree = "<group>"; };
 		AD1271F35FF48F43A22D3CA3 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		C4F0019919BE8E7183981CD3 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C8982DBE6422B2C3E8C9310A /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		D0611E4B6848B23585387964 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D52B3CFB405531EC5E167D7C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E5BA67076A933D6EB5C845DE /* LoomAdvertiser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoomAdvertiser.swift; sourceTree = "<group>"; };
 		E66BD6206A5E87959626ACD2 /* PastureHelperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureHelperApp.swift; sourceTree = "<group>"; };
 		E8856BDE09CDE1A5378A3097 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		E9A3A8D0FA607878B4B705F6 /* PastureApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureApp.swift; sourceTree = "<group>"; };
+		EE8555728FE2C7601E6BBA08 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		F480E1E44AC070102574B793 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		F9EDBC6920AF4AB499F30178 /* PastureTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PastureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F9EDBC6920AF4AB499F30178 /* PastureTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PastureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,13 +186,16 @@
 		630092B4ED241A25D0E23251 /* Pasture */ = {
 			isa = PBXGroup;
 			children = (
+				D0611E4B6848B23585387964 /* Assets.xcassets */,
 				F480E1E44AC070102574B793 /* Info.plist */,
 				5C0E6D167FAFDD5BEBE5F8F1 /* Pasture.entitlements */,
 				6C94B4252B416FFC7DD8227D /* App */,
 				3D63C326C7E26723802D6CE6 /* Chat */,
+				C79467F9EFEDDAAEE718E3D4 /* Conversations */,
 				9B404DC305097B71B884BDC8 /* Design */,
 				15049E68AA45A07FE093D7FE /* Discovery */,
 				220FED7F0A408EAAB03DA8CF /* Environment */,
+				B6B774AB1FE3BF876D82BC11 /* Fonts */,
 				757326CD235D71ECE11B9D90 /* Models */,
 				745FCE28041CB55DBB8FF22D /* Networking */,
 				5DA9F9A5E2FEBCC47C5290C2 /* Onboarding */,
@@ -226,6 +247,7 @@
 				430C2075A1EF3E9842E44BF6 /* ModelManager */,
 				9F21322FC1DAE837478E2BBD /* Networking */,
 				66FA753256A8FDE0E0DCE394 /* Ollama */,
+				D0B1B6C1D4A9E52AD45E61EA /* Onboarding */,
 			);
 			path = PastureHelper;
 			sourceTree = "<group>";
@@ -269,6 +291,8 @@
 			isa = PBXGroup;
 			children = (
 				6CC12324A6864DDF9DFAB66B /* ConversationHistoryRecord.swift */,
+				63B5F562DC35D1E878F8C49B /* ConversationRecord.swift */,
+				6B327D9D9FA11F32CD56DACC /* MessageRecord.swift */,
 			);
 			path = Persistence;
 			sourceTree = "<group>";
@@ -287,6 +311,7 @@
 			children = (
 				E5BA67076A933D6EB5C845DE /* LoomAdvertiser.swift */,
 				712B163D18CA976D3F8CB16F /* OllamaProxy.swift */,
+				1A7F2B069E1D5C35D693365F /* TailscaleMonitor.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -298,6 +323,32 @@
 				E0CCBD2C0F03B79F777E2B14 /* Tests */,
 				5FACBD53C23454F8A679F3F1 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		B6B774AB1FE3BF876D82BC11 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				7263A1606AE598CF4D1B8518 /* Nunito-ExtraBold.ttf */,
+				2AD75B2D5B5B53471691FAD9 /* Nunito-SemiBold.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		C79467F9EFEDDAAEE718E3D4 /* Conversations */ = {
+			isa = PBXGroup;
+			children = (
+				EE8555728FE2C7601E6BBA08 /* ConversationListView.swift */,
+			);
+			path = Conversations;
+			sourceTree = "<group>";
+		};
+		D0B1B6C1D4A9E52AD45E61EA /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				05D3E1950210C662300B6261 /* OnboardingView.swift */,
+				9A68B5D9E082AA06E78987D3 /* OnboardingWindowController.swift */,
+			);
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 		E0616CE8CAAF9ACF32AE8BDE /* Sources */ = {
@@ -325,6 +376,7 @@
 			buildConfigurationList = B5589A4B6E8A1CEFD559507E /* Build configuration list for PBXNativeTarget "Pasture" */;
 			buildPhases = (
 				BDFA0353B44EF99A0D86B481 /* Sources */,
+				2A11A9B3D32B06D7721C4964 /* Resources */,
 				CA0A4C16A327B20F79963D70 /* Frameworks */,
 			);
 			buildRules = (
@@ -389,8 +441,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 03EF7CA9C0DE71F30FBC83E1 /* Build configuration list for PBXProject "Pasture" */;
 			developmentRegion = en;
@@ -417,6 +467,19 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		2A11A9B3D32B06D7721C4964 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				22C7A02D205ABB92A67032DC /* Assets.xcassets in Resources */,
+				1F9B96FFC399D03C00555917 /* Nunito-ExtraBold.ttf in Resources */,
+				F1727433F9C641EFA7F3C370 /* Nunito-SemiBold.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		284A9AC638F00FADF995EC68 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -441,8 +504,11 @@
 				851530B6981355241022AD4B /* ModelManagerWindowController.swift in Sources */,
 				C400F9CDB71196812EF22129 /* OllamaAPIClient.swift in Sources */,
 				4283BA9D9C38497390F8A648 /* OllamaProxy.swift in Sources */,
+				E501C2371054D6F7C346F6F6 /* OnboardingView.swift in Sources */,
+				138431A4A8A320A9A0ABE5C8 /* OnboardingWindowController.swift in Sources */,
 				985CF0A03E304470C7B61005 /* PastureHelperApp.swift in Sources */,
 				15127FEF85F6C6749210D946 /* PastureLoomRuntimeConfiguration.swift in Sources */,
+				38AB89302C5C03BBE3150F3F /* TailscaleMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,8 +521,11 @@
 				70304CB193165E6137D312BC /* ChatViewModel.swift in Sources */,
 				4BCA4EFD2147A8A7B8C3026A /* ConnectionManager.swift in Sources */,
 				425514B60AE50FF9F5E35931 /* ConversationHistoryRecord.swift in Sources */,
+				EDA9DE6523FB15D24985E5F5 /* ConversationListView.swift in Sources */,
+				C6332DDF2099D57CD90CE988 /* ConversationRecord.swift in Sources */,
 				6FECF474FB4873976FC17E0E /* CuratedModelLibrary.swift in Sources */,
 				2798455CBBF20E52FE5BF158 /* EnvironmentBackground.swift in Sources */,
+				EDAB1BDE7D130F0DE1BE2023 /* MessageRecord.swift in Sources */,
 				42ECE5C9D6B4B9BF3620DF26 /* ModelEnvironment.swift in Sources */,
 				27DD0A979C5996E63CD33740 /* PastureApp.swift in Sources */,
 				EC625AC662D12B4B43A2B521 /* PastureLoomRuntimeConfiguration.swift in Sources */,
@@ -481,6 +550,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -497,6 +567,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -571,13 +642,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.amrith.pasture.helper;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -650,6 +725,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -668,13 +744,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.amrith.pasture.helper;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -686,6 +766,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -744,8 +825,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/EthanLipnik/Loom";
 			requirement = {
-				kind = exactVersion;
-				version = 1.2.0;
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
 			};
 		};
 		9277B3225DB818F9F49F4346 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {

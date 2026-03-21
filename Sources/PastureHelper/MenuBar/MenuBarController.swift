@@ -20,7 +20,7 @@ final class MenuBarController {
         popover.animates = true
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "hare.fill", accessibilityDescription: "Pasture")
+            button.image = NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: "Pasture")
             button.image?.isTemplate = true
             button.action = #selector(togglePopover)
             button.target = self
@@ -43,7 +43,7 @@ final class MenuBarController {
             }
         )
         popover.contentViewController = NSHostingController(rootView: contentView)
-        popover.contentSize = NSSize(width: 320, height: 430)
+        popover.contentSize = NSSize(width: 300, height: 480)
 
         bindStatusIcon()
 
@@ -87,23 +87,25 @@ final class MenuBarController {
     ) {
         guard let button = statusItem.button else { return }
 
+        let pastureGreen = NSColor(red: 0.690, green: 0.894, blue: 0.416, alpha: 1)
+
         let tintColor: NSColor
         let tooltip: String
         if !ollamaIsReachable {
             tintColor = .systemRed
-            tooltip = "Pasture for Mac: Ollama not running"
+            tooltip = "Pasture: Ollama not running"
         } else if connectedPeerName != nil {
-            tintColor = .systemGreen
-            tooltip = "Pasture for Mac: iPhone connected"
+            tintColor = pastureGreen
+            tooltip = "Pasture: iPhone connected"
         } else if isPaused {
             tintColor = .systemOrange
-            tooltip = "Pasture for Mac: discovery paused"
+            tooltip = "Pasture: discovery paused"
         } else if isAdvertising {
-            tintColor = .systemYellow
-            tooltip = "Pasture for Mac: waiting for iPhone"
+            tintColor = pastureGreen
+            tooltip = "Pasture: ready"
         } else {
-            tintColor = .systemYellow
-            tooltip = "Pasture for Mac: starting up"
+            tintColor = .systemGray
+            tooltip = "Pasture: starting up"
         }
 
         button.contentTintColor = tintColor

@@ -159,7 +159,7 @@ final class ConnectionManager: ObservableObject {
         guard !helpers.isEmpty else { return nil }
 
         if let preferredPeerID,
-           let preferredPeer = helpers.first(where: { $0.id == preferredPeerID }) {
+           let preferredPeer = helpers.first(where: { $0.id.deviceID == preferredPeerID }) {
             return preferredPeer
         }
 
@@ -204,7 +204,7 @@ final class ConnectionManager: ObservableObject {
         do {
             let newConnection = try await loomContext.connect(peer)
             connection = newConnection
-            connectedPeerID = peer.id
+            connectedPeerID = peer.id.deviceID
             state = .connected(peerName: peer.name)
             rememberPreferredPeer(peer)
             hasEverConnected = true
@@ -342,7 +342,7 @@ final class ConnectionManager: ObservableObject {
         recordEvent("Manual helper refresh found \(availableHelpers.count) helper(s).")
     }
 
-    func connectToHelper(peerID: UUID) async {
+    func connectToHelper(peerID: LoomPeerID) async {
         syncPeersFromContext(source: "manual-connect")
         let currentHelpers = availableHelpers
 
@@ -565,11 +565,11 @@ final class ConnectionManager: ObservableObject {
     }
 
     private func rememberPreferredPeer(_ peer: LoomPeerSnapshot) {
-        preferredPeerID = peer.id
+        preferredPeerID = peer.id.deviceID
         lastConnectedPeerName = peer.name
 
         let defaults = UserDefaults.standard
-        defaults.set(peer.id.uuidString, forKey: DefaultsKeys.preferredPeerID)
+        defaults.set(peer.id.deviceID.uuidString, forKey: DefaultsKeys.preferredPeerID)
         defaults.set(peer.name, forKey: DefaultsKeys.preferredPeerName)
     }
 

@@ -11,7 +11,7 @@ options:
 packages:
   Loom:
     url: https://github.com/EthanLipnik/Loom
-    exactVersion: 1.2.0
+    from: 1.5.0
   swift-markdown-ui:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: 2.4.0
@@ -25,6 +25,8 @@ targets:
     resources:
       - path: Sources/Pasture/Assets.xcassets
         optional: true
+      - path: Sources/Pasture/Fonts
+        buildPhase: resources
     info:
       path: Sources/Pasture/Info.plist
       properties:
@@ -36,6 +38,9 @@ targets:
         PastureCloudKitContainerIdentifier: ""
         PastureMacDownloadURL: ""
         MacCompanionDownloadURL: ""
+        UIAppFonts:
+          - Nunito-ExtraBold.ttf
+          - Nunito-SemiBold.ttf
     dependencies:
       - package: Loom
         product: Loom
@@ -52,6 +57,7 @@ targets:
         INFOPLIST_FILE: Sources/Pasture/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: Sources/Pasture/Pasture.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   PastureTests:
     type: bundle.unit-test
