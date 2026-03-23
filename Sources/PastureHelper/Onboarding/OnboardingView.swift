@@ -4,7 +4,7 @@ struct OnboardingView: View {
     let onGetStarted: () -> Void
 
     @State private var ollamaState: OllamaCheckState = .checking
-    private let accentGreen = Color(red: 0.690, green: 0.894, blue: 0.416)
+    private let accentGreen = PastureColors.green
 
     enum OllamaCheckState {
         case checking, running, notRunning
@@ -18,10 +18,10 @@ struct OnboardingView: View {
 
             VStack(spacing: 12) {
                 stepCard(
-                    icon: "leaf.fill",
+                    icon: "sun.horizon.fill",
                     iconColor: accentGreen,
                     title: "Lives in your menu bar",
-                    body: "Pasture runs quietly in the background. Look for the green leaf icon in your menu bar at any time."
+                    body: "Pasture runs quietly in the background. Look for the sun icon in your menu bar at any time."
                 )
 
                 ollamaStepCard
@@ -56,7 +56,7 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image(systemName: "leaf.fill")
+            Image(systemName: "sun.horizon.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(accentGreen)
 

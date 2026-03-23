@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import PastureShared
 #if os(iOS)
 import UIKit
 #endif
@@ -10,11 +11,20 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var messages: [Message] = []
     @Published private(set) var isStreaming = false
     @Published private(set) var streamingText = ""
+    @Published private(set) var connectionError: String?
     @Published private(set) var selectedModel: OllamaModel?
     @Published private(set) var installedModels: [OllamaModel] = []
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelLoadError: String?
     @Published private(set) var activeDownload: ModelDownloadState?
+    @Published private(set) var failedMessageID: Message.ID?
+    @Published var replyMessage: Message? = nil
+
+    private var streamingTask: Task<Void, Never>?
+
+    func clearConnectionError() {
+        connectionError = nil
+    }
 
     var needsModelSetup: Bool {
         !isLoadingModels && modelLoadError == nil && installedModels.isEmpty
@@ -32,6 +42,7 @@ final class ChatViewModel: ObservableObject {
     private enum DefaultsKeys {
         static let selectedModelName = "pasture.chat.selectedModelName"
         static let cachedModels = "pasture.chat.cachedModels"
+        static let systemPrompts = "pasture.chat.systemPrompts"
     }
 
     init(conversation: ConversationRecord, modelContext: ModelContext) {
@@ -80,18 +91,16 @@ final class ChatViewModel: ObservableObject {
 
         if let current = selectedModel,
            installedModels.contains(where: { $0.name == current.name }) {
-            cacheInstalledModels()
-            updateConversationMeta()
-            return
-        }
-
-        let preferredName = conversation.modelName
-            ?? UserDefaults.standard.string(forKey: DefaultsKeys.selectedModelName)
-        if let name = preferredName,
-           let match = installedModels.first(where: { $0.name == name }) {
-            selectedModel = match
+            // Current selection is still valid; no need to re-resolve.
         } else {
-            selectedModel = installedModels.first
+            let preferredName = conversation.modelName
+                ?? UserDefaults.standard.string(forKey: DefaultsKeys.selectedModelName)
+            if let name = preferredName,
+               let match = installedModels.first(where: { $0.name == name }) {
+                selectedModel = match
+            } else {
+                selectedModel = installedModels.first
+            }
         }
 
         cacheInstalledModels()
@@ -114,32 +123,27 @@ final class ChatViewModel: ObservableObject {
     }
 
     func isInstalled(_ curatedModel: CuratedModel) -> Bool {
-        installedModels.contains {
-            $0.name == curatedModel.id || $0.name.hasPrefix("\(curatedModel.id):")
-        }
+        installedModels.contains { $0.matches(curatedModel) }
     }
 
     func download(curatedModel: CuratedModel, connection: ConnectionManager) async {
         guard activeDownload == nil, !isInstalled(curatedModel) else { return }
 
-        activeDownload = ModelDownloadState(
+        var state = ModelDownloadState(
             modelID: curatedModel.id,
             displayName: curatedModel.displayName,
             status: "Starting download…",
             fraction: nil
         )
+        activeDownload = state
         modelLoadError = nil
 
         var didSucceed = false
         do {
             for try await progress in connection.pull(model: curatedModel.id) {
-                activeDownload = ModelDownloadState(
-                    modelID: curatedModel.id,
-                    displayName: curatedModel.displayName,
-                    status: progress.status.capitalized,
-                    fraction: progress.total == nil ? nil : progress.fraction
-                )
-                if progress.status == "success" { didSucceed = true }
+                state = state.updating(with: progress)
+                activeDownload = state
+                if progress.isComplete { didSucceed = true }
             }
         } catch {
             modelLoadError = error is CancellationError
@@ -149,9 +153,7 @@ final class ChatViewModel: ObservableObject {
 
         if didSucceed {
             await loadModels(connection: connection)
-            if let downloaded = installedModels.first(where: {
-                $0.name == curatedModel.id || $0.name.hasPrefix("\(curatedModel.id):")
-            }) {
+            if let downloaded = installedModels.first(where: { $0.matches(curatedModel) }) {
                 selectModel(downloaded)
             }
         } else if modelLoadError == nil {
@@ -161,24 +163,79 @@ final class ChatViewModel: ObservableObject {
         activeDownload = nil
     }
 
+    // MARK: - System prompts
+
+    func systemPrompt(for modelName: String) -> String {
+        let dict = UserDefaults.standard.dictionary(forKey: DefaultsKeys.systemPrompts) as? [String: String]
+        return dict?[modelName] ?? ""
+    }
+
+    func setSystemPrompt(_ prompt: String, for modelName: String) {
+        var dict = (UserDefaults.standard.dictionary(forKey: DefaultsKeys.systemPrompts) as? [String: String]) ?? [:]
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { dict.removeValue(forKey: modelName) } else { dict[modelName] = trimmed }
+        UserDefaults.standard.set(dict, forKey: DefaultsKeys.systemPrompts)
+    }
+
     // MARK: - Sending
 
     func send(text: String, connection: ConnectionManager) async {
         guard let model = selectedModel else { return }
 
         guard connection.isConnected else {
-            let msg = "Connection to your Mac is currently unavailable. Pasture is reconnecting in the background."
-            appendAndPersist(role: "assistant", content: msg)
+            connectionError = "Reconnecting to your Mac — please try again in a moment."
             return
         }
+        connectionError = nil
+        failedMessageID = nil
 
 #if os(iOS)
         let feedback = UIImpactFeedbackGenerator(style: .light)
         feedback.impactOccurred()
 #endif
 
-        appendAndPersist(role: "user", content: text)
-        let history = messages.map { ChatMessage(role: $0.role, content: $0.content) }
+        let fullText: String
+        if let reply = replyMessage {
+            let who = reply.role == MessageRole.user.rawValue ? "You previously said" : "The AI previously said"
+            fullText = "> \(who): \"\(reply.content.prefix(200))\"\n\n\(text)"
+        } else {
+            fullText = text
+        }
+        replyMessage = nil
+
+        appendAndPersist(role: .user, content: fullText)
+        let lastUserMessageID = messages.last(where: { $0.role == MessageRole.user.rawValue })?.id
+
+        await runStream(model: model, connection: connection, lastUserMessageID: lastUserMessageID)
+    }
+
+    func retryFailed(connection: ConnectionManager) async {
+        guard failedMessageID != nil, let model = selectedModel else { return }
+        failedMessageID = nil
+        connectionError = nil
+
+#if os(iOS)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
+
+        await runStream(model: model, connection: connection, lastUserMessageID: nil)
+    }
+
+    func cancelStreaming() {
+        streamingTask?.cancel()
+        streamingTask = nil
+    }
+
+    private func runStream(
+        model: OllamaModel,
+        connection: ConnectionManager,
+        lastUserMessageID: Message.ID?
+    ) async {
+        var history = messages.map { ChatMessage(role: $0.role, content: $0.content) }
+        let promptText = systemPrompt(for: model.name)
+        if !promptText.isEmpty {
+            history.insert(ChatMessage(role: "system", content: promptText), at: 0)
+        }
 
         isStreaming = true
         streamingText = ""
@@ -186,55 +243,116 @@ final class ChatViewModel: ObservableObject {
         var fullResponse = ""
         var streamErrorMessage: String?
 
-        do {
-            for try await token in connection.chat(model: model.name, messages: history) {
-                fullResponse += token
-                streamingText = fullResponse
+        let task = Task {
+            do {
+                for try await token in connection.chat(model: model.name, messages: history) {
+                    fullResponse += token
+                    streamingText = fullResponse
+                }
+            } catch {
+                streamErrorMessage = userFacingError(
+                    for: error,
+                    fallback: "The response was interrupted before completion."
+                )
             }
-        } catch {
-            streamErrorMessage = userFacingError(
-                for: error,
-                fallback: "The response was interrupted before completion."
-            )
         }
+        streamingTask = task
+        await task.value
+        streamingTask = nil
 
         streamingText = ""
         isStreaming = false
 
         if !fullResponse.isEmpty {
-            appendAndPersist(role: "assistant", content: fullResponse)
+            appendAndPersist(role: .assistant, content: fullResponse)
+#if os(iOS)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+#endif
+            let markdown = conversationMarkdown()
+            let filename = conversationFilename()
+            Task { @MainActor in
+                await connection.backup(filename: "Conversations/\(filename)", payload: markdown)
+            }
             if let err = streamErrorMessage {
-                appendAndPersist(role: "assistant", content: "Response interrupted: \(err)")
+                connectionError = err
             }
         } else if let err = streamErrorMessage {
-            appendAndPersist(role: "assistant", content: err)
+            connectionError = err
+            failedMessageID = lastUserMessageID
         } else if !connection.isConnected {
-            appendAndPersist(
-                role: "assistant",
-                content: "The response was interrupted because your Mac disconnected. Please try again in a moment."
-            )
+            connectionError = "Reconnecting to your Mac — please try again in a moment."
+            failedMessageID = lastUserMessageID
         }
+    }
+
+    // MARK: - Backup
+
+    func conversationFilename() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let date = formatter.string(from: conversation.createdAt)
+        let title = (conversation.title ?? "Conversation")
+            .components(separatedBy: .init(charactersIn: "/:*?\"<>|\\"))
+            .joined(separator: "-")
+        return "\(date) - \(title).md"
+    }
+
+    func conversationMarkdown() -> String {
+        let title = conversation.title ?? "Conversation"
+        let modelName = conversation.modelName ?? "Unknown model"
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        let dateStr = formatter.string(from: conversation.createdAt)
+
+        var lines: [String] = [
+            "# \(title)",
+            "",
+            "**Model:** \(modelName)",
+            "**Started:** \(dateStr)",
+            "",
+            "---",
+            ""
+        ]
+
+        for message in messages {
+            let label = message.role == MessageRole.user.rawValue ? "You" : "Pasture"
+            lines.append("**\(label):** \(message.content)")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Persistence
 
-    private func appendAndPersist(role: String, content: String) {
-        messages.append(Message(role: role, content: content))
-        let record = MessageRecord(role: role, content: content, conversation: conversation)
+    private func appendAndPersist(role: MessageRole, content: String) {
+        messages.append(Message(role: role.rawValue, content: content))
+        let record = MessageRecord(role: role.rawValue, content: content, conversation: conversation)
         modelContext.insert(record)
         conversation.updatedAt = .now
         conversation.modelName = selectedModel?.name
 
-        if conversation.title == nil, role == "user" {
+        if conversation.title == nil, role == .user {
             conversation.title = autoTitle(from: content)
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            assertionFailure("[ChatViewModel] Failed to save after appending message: \(error)")
+        }
     }
 
     private func updateConversationMeta() {
         conversation.modelName = selectedModel?.name
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            assertionFailure("[ChatViewModel] Failed to save conversation meta: \(error)")
+        }
     }
 
     private func autoTitle(from content: String) -> String {
@@ -258,16 +376,17 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func userFacingError(for error: Error, fallback: String) -> String {
-        if error is CancellationError { return "Request cancelled." }
-        if let proxyError = error as? ProxyError,
-           let message = proxyError.errorDescription, !message.isEmpty {
-            return message
-        }
-        let msg = (error as NSError).localizedDescription
-        if !msg.isEmpty, msg != "(null)" { return msg }
-        return fallback
+}
+
+func userFacingError(for error: Error, fallback: String) -> String {
+    if error is CancellationError { return "Request cancelled." }
+    if let proxyError = error as? ProxyError,
+       let message = proxyError.errorDescription, !message.isEmpty {
+        return message
     }
+    let msg = (error as NSError).localizedDescription
+    if !msg.isEmpty, msg != "(null)" { return msg }
+    return fallback
 }
 
 struct Message: Identifiable {
@@ -276,9 +395,3 @@ struct Message: Identifiable {
     let content: String
 }
 
-struct ModelDownloadState: Equatable {
-    let modelID: String
-    let displayName: String
-    let status: String
-    let fraction: Double?
-}

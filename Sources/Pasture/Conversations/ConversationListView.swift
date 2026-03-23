@@ -11,9 +11,13 @@ struct ConversationListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \ConversationRecord.updatedAt, order: .reverse) private var conversations: [ConversationRecord]
 
+    @AppStorage("pasture.chat.themeOverride") private var themeOverrideRaw: String = ""
+
     @State private var selectedConversation: ConversationRecord?
     @State private var listEnvironment = ModelEnvironment.chat(for: nil)
     @State private var isShowingSettings = false
+    @State private var renamingConversation: ConversationRecord?
+    @State private var renameText = ""
 
     var body: some View {
         NavigationStack {
@@ -47,9 +51,18 @@ struct ConversationListView: View {
         }
         .onChange(of: conversations.first?.modelName) { _, _ in updateEnvironment() }
         .onChange(of: connection.installedModels) { _, _ in updateEnvironment() }
+        .onChange(of: themeOverrideRaw) { _, _ in updateEnvironment() }
         .sheet(isPresented: $isShowingSettings) {
             ChatSettingsView()
                 .environmentObject(connection)
+        }
+        .alert("Rename Conversation", isPresented: Binding(
+            get: { renamingConversation != nil },
+            set: { if !$0 { renamingConversation = nil } }
+        )) {
+            TextField("Title", text: $renameText)
+            Button("Save") { commitRename() }
+            Button("Cancel", role: .cancel) { renamingConversation = nil }
         }
     }
 
@@ -136,7 +149,20 @@ struct ConversationListView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            delete(conversation)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                     .contextMenu {
+                        Button {
+                            renamingConversation = conversation
+                            renameText = conversation.displayTitle
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
                         Button(role: .destructive) {
                             delete(conversation)
                         } label: {
@@ -156,7 +182,7 @@ struct ConversationListView: View {
         VStack(spacing: 16) {
             Spacer()
 
-            Image(systemName: "photo.fill")
+            Image(systemName: "bubble.and.pencil")
                 .font(.system(size: 52, weight: .thin))
                 .foregroundStyle(.white.opacity(0.25))
                 .shadow(color: .black.opacity(0.20), radius: 6, y: 2)
@@ -186,7 +212,7 @@ struct ConversationListView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 56, height: 56)
-                .modifier(NewChatFABSurface(palette: listEnvironment.palette, reduceTransparency: reduceTransparency))
+                .modifier(NewChatFABSurface(palette: listEnvironment.palette))
         }
         .buttonStyle(.plain)
     }
@@ -196,7 +222,11 @@ struct ConversationListView: View {
     private func createAndOpenNewConversation() {
         let conversation = ConversationRecord()
         modelContext.insert(conversation)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[ConversationListView] Failed to save new conversation: \(error)")
+        }
         selectedConversation = conversation
 #if os(iOS)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -205,13 +235,42 @@ struct ConversationListView: View {
 
     private func delete(_ conversation: ConversationRecord) {
         modelContext.delete(conversation)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[ConversationListView] Failed to save after deleting conversation: \(error)")
+        }
+    }
+
+    private func commitRename() {
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let conversation = renamingConversation else {
+            renamingConversation = nil
+            return
+        }
+        conversation.title = trimmed
+        do {
+            try modelContext.save()
+        } catch {
+            print("[ConversationListView] Failed to save renamed conversation: \(error)")
+        }
+        renamingConversation = nil
     }
 
     private func updateEnvironment() {
         let modelName = conversations.first?.modelName
+        let environment: ModelEnvironment
+        if let override = TimeOfDay(rawValue: themeOverrideRaw) {
+            environment = ModelEnvironment(
+                timeOfDay: override,
+                complexity: ModelComplexity.from(modelName: modelName),
+                isLateNight: (0..<5).contains(Calendar.current.component(.hour, from: Date()))
+            )
+        } else {
+            environment = ModelEnvironment.chat(for: modelName)
+        }
         withAnimation(.easeInOut(duration: 0.6)) {
-            listEnvironment = ModelEnvironment.chat(for: modelName)
+            listEnvironment = environment
         }
     }
 }
@@ -240,7 +299,7 @@ private struct ConversationRow: View {
                 }
 
                 if let preview = conversation.previewText {
-                    Text(preview.strippingMarkdown)
+                    Text(preview)
                         .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(2)
@@ -263,8 +322,14 @@ private struct ConversationRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .modifier(ConversationRowSurface(reduceTransparency: reduceTransparency))
+        .modifier(ConversationRowSurface())
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
 
     private func relativeTime(_ date: Date) -> String {
         let seconds = Date.now.timeIntervalSince(date)
@@ -274,17 +339,13 @@ private struct ConversationRow: View {
         let days = Int(seconds / 86400)
         if days == 1 { return "Yesterday" }
         if days < 7 { return "\(days)d ago" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }
 
 // MARK: - Surface modifiers
 
 private struct ConversationRowSurface: ViewModifier {
-    let reduceTransparency: Bool
-
     func body(content: Content) -> some View {
         content
             .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -297,7 +358,6 @@ private struct ConversationRowSurface: ViewModifier {
 
 private struct NewChatFABSurface: ViewModifier {
     let palette: EnvironmentPalette
-    let reduceTransparency: Bool
 
     func body(content: Content) -> some View {
         content
@@ -319,29 +379,3 @@ private struct TopBarCircleSurface: ViewModifier {
     }
 }
 
-// MARK: - Markdown stripping for preview text
-
-private extension String {
-    var strippingMarkdown: String {
-        var s = self
-        // Fenced code blocks → ellipsis
-        s = s.replacingOccurrences(of: "```[\\s\\S]*?```", with: "…", options: .regularExpression)
-        // Inline code
-        s = s.replacingOccurrences(of: "`[^`\n]+`", with: "", options: .regularExpression)
-        // Bold+italic, bold, italic
-        s = s.replacingOccurrences(of: "\\*\\*\\*([^*]+)\\*\\*\\*", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\*\\*([^*\n]+)\\*\\*", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\*([^*\n]+)\\*", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "__([^_\n]+)__", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "_([^_\n]+)_", with: "$1", options: .regularExpression)
-        // Links
-        s = s.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)", with: "$1", options: .regularExpression)
-        // Collapse newlines to spaces, strip headers per line, strip leading/trailing whitespace
-        s = s.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .map { $0.replacingOccurrences(of: "^#{1,6}\\s+", with: "", options: .regularExpression) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}

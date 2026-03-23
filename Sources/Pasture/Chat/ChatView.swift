@@ -1,6 +1,7 @@
 import SwiftUI
 import MarkdownUI
 import SwiftData
+import PastureShared
 #if os(iOS)
 import UIKit
 #endif
@@ -14,6 +15,7 @@ struct ChatView: View {
     @State private var isShowingSettings = false
     @State private var chatEnvironment = ModelEnvironment.chat(for: nil)
     @State private var hasInitializedTheme = false
+    @AppStorage("pasture.chat.themeOverride") private var themeOverrideRaw: String = ""
 
     init(conversation: ConversationRecord, modelContext: ModelContext) {
         _viewModel = StateObject(
@@ -80,10 +82,17 @@ struct ChatView: View {
             guard newPhase == .active else { return }
             refreshChatEnvironment(modelName: viewModel.selectedModel?.name, animated: false)
         }
+        .onChange(of: connection.isConnected) { _, isNowConnected in
+            if isNowConnected { viewModel.clearConnectionError() }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.connectionError)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shouldShowConnectionRecoveryBanner)
-        .sheet(isPresented: $isShowingSettings) {
+        .sheet(isPresented: $isShowingSettings, onDismiss: {
+            refreshChatEnvironment(modelName: viewModel.selectedModel?.name, animated: true)
+        }) {
             ChatSettingsView()
                 .environmentObject(connection)
+                .environmentObject(viewModel)
         }
     }
 
@@ -129,7 +138,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             topBarStrip
 
-            if let modelLoadError = viewModel.modelLoadError {
+            if let modelLoadError = viewModel.modelLoadError, !shouldShowConnectionRecoveryBanner {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -156,17 +165,53 @@ struct ChatView: View {
                 .padding(.top, 8)
             }
 
+            if let connectionError = viewModel.connectionError, !shouldShowConnectionRecoveryBanner {
+                Button {
+                    Task { await connection.startDiscovery() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .foregroundStyle(.white.opacity(0.72))
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(connectionError)
+                            .font(.system(.footnote, design: .rounded, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .lineLimit(2)
+                        Spacer()
+                        Text("Reconnect")
+                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.60))
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(chatPalette.nearLayer.opacity(0.48), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(.white.opacity(0.10), lineWidth: 0.5)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, viewModel.modelLoadError == nil ? 8 : 4)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(viewModel.messages) { message in
-                            MessageBubble(
+                            ReplyableMessageRow(
                                 message: message,
                                 userBubbleColor: chatPalette.userBubble,
                                 assistantBackground: assistantBubbleBackground,
-                                assistantText: assistantBubbleText
+                                assistantText: assistantBubbleText,
+                                failedMessageID: viewModel.failedMessageID,
+                                accentColor: chatPalette.accent,
+                                onRetry: { Task { await viewModel.retryFailed(connection: connection) } },
+                                onReply: { viewModel.replyMessage = $0 }
                             )
-                                .id(message.id)
+                            .id(message.id)
+                            .animation(.easeInOut(duration: 0.2), value: viewModel.failedMessageID)
                         }
                         if viewModel.isStreaming {
                             StreamingBubble(
@@ -183,13 +228,26 @@ struct ChatView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    ComposeBar(
-                        palette: chatPalette,
-                        reduceTransparency: reduceTransparency,
-                        isDisabled: viewModel.isStreaming || viewModel.selectedModel == nil || !connection.isConnected
-                    ) { text in
-                        await viewModel.send(text: text, connection: connection)
+                    VStack(spacing: 0) {
+                        if let reply = viewModel.replyMessage {
+                            QuotedReplyBar(
+                                message: reply,
+                                accentColor: chatPalette.accent,
+                                onDismiss: { viewModel.replyMessage = nil }
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        ComposeBar(
+                            palette: chatPalette,
+                            reduceTransparency: reduceTransparency,
+                            isDisabled: viewModel.isStreaming || viewModel.selectedModel == nil || !connection.isConnected,
+                            isStreaming: viewModel.isStreaming,
+                            onCancel: { viewModel.cancelStreaming() }
+                        ) { text in
+                            await viewModel.send(text: text, connection: connection)
+                        }
                     }
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.replyMessage?.id)
                 }
                 .onChange(of: viewModel.streamingText) { _, _ in
                     withAnimation { proxy.scrollTo("streaming") }
@@ -243,7 +301,16 @@ struct ChatView: View {
     }
 
     private func refreshChatEnvironment(modelName: String?, animated: Bool) {
-        let updated = ModelEnvironment.chat(for: modelName)
+        let updated: ModelEnvironment
+        if let override = TimeOfDay(rawValue: themeOverrideRaw) {
+            updated = ModelEnvironment(
+                timeOfDay: override,
+                complexity: ModelComplexity.from(modelName: modelName),
+                isLateNight: (0..<5).contains(Calendar.current.component(.hour, from: Date()))
+            )
+        } else {
+            updated = ModelEnvironment.chat(for: modelName)
+        }
         if animated {
             withAnimation(.easeInOut(duration: 0.8)) {
                 chatEnvironment = updated
@@ -257,6 +324,7 @@ struct ChatView: View {
 
 struct ChatSettingsView: View {
     @EnvironmentObject var connection: ConnectionManager
+    @EnvironmentObject var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var deletingModelName: String?
     @State private var pendingDeleteModel: OllamaModel?
@@ -264,20 +332,22 @@ struct ChatSettingsView: View {
     @State private var activeDownload: ModelDownloadState?
     @State private var downloadErrorMessage: String?
     @State private var downloadTask: Task<Void, Never>?
+    @State private var isRefreshingData = false
     @State private var isShowingDiagnostics = false
     @State private var copiedDiagnostics = false
     @AppStorage(PastureLoomRuntimeConfiguration.tailscaleHostnameKey)
     private var tailscaleHostname: String = ""
+    @AppStorage("pasture.chat.themeOverride") private var themeOverrideRaw: String = ""
 
     var body: some View {
         NavigationStack {
             List {
                 connectionSection
+                installedModelsSection
+                getMoreModelsSection
+                customisationSection
                 tailscaleSection
                 diagnosticsSection
-                availableMacsSection
-                getMoreModelsSection
-                installedModelsSection
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -289,8 +359,13 @@ struct ChatSettingsView: View {
                     Button {
                         Task { await refreshData() }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
+                        if isRefreshingData {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
+                    .disabled(isRefreshingData)
                 }
             }
         }
@@ -357,10 +432,14 @@ struct ChatSettingsView: View {
 
     private func modelSubtitle(_ model: OllamaModel) -> String {
         let family = model.details?.family?.capitalized ?? "Unknown family"
-        guard let parameterSize = model.details?.parameterSize else {
-            return family
+        var parts: [String] = [family]
+        if let parameterSize = model.details?.parameterSize {
+            parts.append(parameterSize)
         }
-        return "\(family) • \(parameterSize)"
+        if let size = model.size, size > 0 {
+            parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+        }
+        return parts.joined(separator: " • ")
     }
 
     private var availableRecommendedModels: [CuratedModel] {
@@ -371,8 +450,39 @@ struct ChatSettingsView: View {
         }
     }
 
+    private var customisationSection: some View {
+        Section {
+            Picker("Theme", selection: $themeOverrideRaw) {
+                Text("Auto (time of day)").tag("")
+                Text("Morning").tag(TimeOfDay.morning.rawValue)
+                Text("Afternoon").tag(TimeOfDay.afternoon.rawValue)
+                Text("Evening").tag(TimeOfDay.evening.rawValue)
+                Text("Night").tag(TimeOfDay.night.rawValue)
+            }
+            .font(.system(.body, design: .rounded))
+            .pickerStyle(.menu)
+
+            if connection.installedModels.isEmpty {
+                Text("No models installed yet.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(connection.installedModels) { model in
+                    NavigationLink(model.name) {
+                        SystemPromptEditorView(modelName: model.name)
+                    }
+                    .font(.system(.body, design: .rounded))
+                }
+            }
+        } header: {
+            Text("Customisation")
+        } footer: {
+            Text("Choose a theme or set a system prompt to guide each model's behaviour.")
+        }
+    }
+
     private var connectionSection: some View {
-        Section("Connection") {
+        Section {
             HStack(spacing: 10) {
                 Circle()
                     .fill(statusColor)
@@ -380,6 +490,40 @@ struct ChatSettingsView: View {
                 Text(statusText)
                     .font(.system(.body, design: .rounded))
             }
+
+            if connection.availableHelpers.isEmpty {
+                Text("No Macs found right now.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(connection.availableHelpers) { peer in
+                    Button {
+                        Task { await connection.connectToHelper(peerID: peer.id) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(peer.name)
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Text(peer.isNearby ? "Nearby" : "Reachable")
+                                    .font(.system(.caption, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if connection.connectedPeerID == peer.id.deviceID {
+                                Text("Connected")
+                                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } header: {
+            Text("Connection")
+        } footer: {
+            Text("Macs running Pasture Helper on your network. Tap to switch.")
         }
     }
 
@@ -454,40 +598,6 @@ struct ChatSettingsView: View {
         .padding(.top, 4)
     }
 
-    private var availableMacsSection: some View {
-        Section("Available Macs") {
-            if connection.availableHelpers.isEmpty {
-                Text("No Macs found right now.")
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(connection.availableHelpers) { peer in
-                    Button {
-                        Task { await connection.connectToHelper(peerID: peer.id) }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(peer.name)
-                                    .font(.system(.body, design: .rounded, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                Text(peer.isNearby ? "Nearby" : "Reachable")
-                                    .font(.system(.caption, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if connection.connectedPeerID == peer.id.deviceID {
-                                Text("Connected")
-                                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
     private var getMoreModelsSection: some View {
         Section("Get More Models") {
             if !connection.isConnected {
@@ -525,6 +635,9 @@ struct ChatSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Text(model.sizeLabel)
+                .font(.system(.caption, design: .rounded, weight: .medium))
+                .foregroundStyle(.secondary)
             Button {
                 startDownload(model)
             } label: {
@@ -651,6 +764,8 @@ struct ChatSettingsView: View {
     }
 
     private func refreshData() async {
+        isRefreshingData = true
+        defer { isRefreshingData = false }
         await connection.refreshAvailableHelpers()
         do {
             try await connection.fetchModels()
@@ -668,40 +783,24 @@ struct ChatSettingsView: View {
             return
         }
 
-        activeDownload = ModelDownloadState(
+        var state = ModelDownloadState(
             modelID: model.id,
             displayName: model.displayName,
             status: "Starting download…",
             fraction: nil
         )
+        activeDownload = state
         downloadErrorMessage = nil
 
         var didSucceed = false
         do {
             for try await progress in connection.pull(model: model.id) {
-                activeDownload = ModelDownloadState(
-                    modelID: model.id,
-                    displayName: model.displayName,
-                    status: progress.status.capitalized,
-                    fraction: progress.total == nil ? nil : progress.fraction
-                )
-                if progress.status == "success" {
-                    didSucceed = true
-                }
+                state = state.updating(with: progress)
+                activeDownload = state
+                if progress.isComplete { didSucceed = true }
             }
         } catch {
-            if error is CancellationError {
-                downloadErrorMessage = "Download cancelled."
-            } else {
-                let localizedMessage =
-                    (error as? LocalizedError)?.errorDescription
-                    ?? (error as NSError).localizedDescription
-                if !localizedMessage.isEmpty {
-                    downloadErrorMessage = localizedMessage
-                } else {
-                    downloadErrorMessage = "Download failed. Please try again."
-                }
-            }
+            downloadErrorMessage = userFacingError(for: error, fallback: "Download failed. Please try again.")
         }
 
         activeDownload = nil
@@ -729,6 +828,7 @@ struct ChatSettingsView: View {
 
         do {
             try await connection.delete(model: model.name)
+            viewModel.setSystemPrompt("", for: model.name)
         } catch {
             deleteErrorMessage = "Couldn’t delete \(model.name). Please try again."
         }
@@ -827,6 +927,30 @@ struct ChatSettingsView: View {
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
+}
+
+private struct SystemPromptEditorView: View {
+    let modelName: String
+    @EnvironmentObject var viewModel: ChatViewModel
+    @State private var text: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.system(.body, design: .rounded))
+            .padding(12)
+            .navigationTitle(modelName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        viewModel.setSystemPrompt(text, for: modelName)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear { text = viewModel.systemPrompt(for: modelName) }
+    }
 }
 
 struct IntentPickerView: View {
@@ -1239,15 +1363,24 @@ struct MessageBubble: View {
     let userBubbleColor: Color
     var assistantBackground: Color = .white.opacity(0.85)
     var assistantText: Color = .black.opacity(0.82)
+    var failedMessageID: Message.ID? = nil
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        if message.role == "user" {
-            HStack {
-                Spacer(minLength: 56)
-                userBubble
+        Group {
+            if message.role == MessageRole.user.rawValue {
+                HStack {
+                    Spacer(minLength: 56)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        userBubble
+                        if message.id == failedMessageID {
+                            retryButton
+                        }
+                    }
+                }
+            } else {
+                assistantBubble
             }
-        } else {
-            assistantBubble
         }
     }
 
@@ -1258,6 +1391,27 @@ struct MessageBubble: View {
             .padding(.vertical, 12)
             .background(userBubbleColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .foregroundStyle(.white)
+            .textSelection(.enabled)
+    }
+
+    @ViewBuilder
+    private var retryButton: some View {
+        Button {
+#if os(iOS)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
+            onRetry?()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.arrow.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Tap to retry")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(.red.opacity(0.8))
+        }
+        .buttonStyle(.plain)
+        .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
     }
 
     @ViewBuilder
@@ -1299,6 +1453,107 @@ struct MessageBubble: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(assistantText.opacity(0.10), lineWidth: 0.5)
             }
+    }
+}
+
+// MARK: - Swipe-to-reply row
+
+private struct ReplyableMessageRow: View {
+    let message: Message
+    let userBubbleColor: Color
+    let assistantBackground: Color
+    let assistantText: Color
+    let failedMessageID: Message.ID?
+    let accentColor: Color
+    let onRetry: (() -> Void)?
+    let onReply: (Message) -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var hasTriggered = false
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Image(systemName: "arrowshape.turn.up.left.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(accentColor)
+                .opacity(min(dragOffset / 50, 1.0))
+                .scaleEffect(0.7 + 0.3 * min(dragOffset / 50, 1.0))
+                .frame(width: 36, height: 36)
+                .padding(.leading, 8)
+
+            MessageBubble(
+                message: message,
+                userBubbleColor: userBubbleColor,
+                assistantBackground: assistantBackground,
+                assistantText: assistantText,
+                failedMessageID: failedMessageID,
+                onRetry: onRetry
+            )
+            .offset(x: dragOffset)
+        }
+        .gesture(
+            DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                .onChanged { value in
+                    guard abs(value.translation.width) > abs(value.translation.height),
+                          value.translation.width > 0 else { return }
+                    dragOffset = min(value.translation.width, 60)
+                    if dragOffset >= 50, !hasTriggered {
+                        hasTriggered = true
+#if os(iOS)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
+                    }
+                }
+                .onEnded { _ in
+                    if hasTriggered { onReply(message) }
+                    hasTriggered = false
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        dragOffset = 0
+                    }
+                }
+        )
+    }
+}
+
+// MARK: - Quoted reply bar
+
+private struct QuotedReplyBar: View {
+    let message: Message
+    let accentColor: Color
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(accentColor)
+                .frame(width: 3)
+                .clipShape(Capsule())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message.role == MessageRole.user.rawValue ? "You" : "AI")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(accentColor)
+                Text(message.content)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
     }
 }
 
@@ -1390,6 +1645,8 @@ struct ComposeBar: View {
     let palette: EnvironmentPalette
     let reduceTransparency: Bool
     let isDisabled: Bool
+    var isStreaming: Bool = false
+    var onCancel: (() -> Void)? = nil
     let onSend: (String) async -> Void
 
     @State private var text = ""
@@ -1417,7 +1674,8 @@ struct ComposeBar: View {
                 }
             }
 
-            sendButton
+            actionButton
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isStreaming)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
@@ -1434,26 +1692,33 @@ struct ComposeBar: View {
     }
 
     @ViewBuilder
-    private var sendButton: some View {
-        Button {
-            submit()
-        } label: {
-            Image(systemName: "arrow.up")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(canSend ? .white : .white.opacity(0.3))
-                .frame(width: 34, height: 34)
-                .background {
-                    buttonBackground
-                }
+    private var actionButton: some View {
+        if isStreaming {
+            Button {
+                onCancel?()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(width: 34, height: 34)
+                    .background { Circle().fill(.white.opacity(0.2)) }
+            }
+            .buttonStyle(.plain)
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
+        } else {
+            Button {
+                submit()
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(canSend ? .white : .white.opacity(0.3))
+                    .frame(width: 34, height: 34)
+                    .background { Circle().fill(canSend ? palette.userBubble : .white.opacity(0.2)) }
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSend)
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
         }
-        .buttonStyle(.plain)
-        .disabled(!canSend)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: canSend)
-    }
-
-    @ViewBuilder
-    private var buttonBackground: some View {
-        Circle().fill(canSend ? palette.userBubble : .white.opacity(0.2))
     }
 
     private var canSend: Bool {
@@ -1477,6 +1742,7 @@ private struct TopBarCircleButton: View {
                 .modifier(TopBarButtonSurfaceModifier(palette: palette, reduceTransparency: reduceTransparency, isEnabled: isEnabled))
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle().size(CGSize(width: 44, height: 44)))
         .disabled(!isEnabled)
     }
 }

@@ -1,6 +1,8 @@
 import Foundation
 import Loom
 import LoomKit
+import MultipeerConnectivity
+import PastureShared
 
 /// Central state manager for the Loom P2P connection to Pasture for Mac.
 /// Handles discovery, auto-connect/reconnect, and the request/response wire protocol.
@@ -19,12 +21,14 @@ final class ConnectionManager: ObservableObject {
     }
 
     private let loomContext: LoomContext
-    private var connection: LoomConnectionHandle?
+    private let mpcBrowser = MPCBrowser()
+    private var connection: PeerChannelAdapter?
     private var discoveryTask: Task<Void, Never>?
     private var peerRefreshTask: Task<Void, Never>?
     private var listenTask: Task<Void, Never>?
     private var connectionEventTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
+    private var keepaliveTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = ConnectionRuntimePolicy.maxReconnectAttempts
     private let requestTimeoutNanoseconds = ConnectionRuntimePolicy.requestTimeoutNanoseconds
@@ -95,6 +99,7 @@ final class ConnectionManager: ObservableObject {
 
         do {
             try await loomContext.start()
+            mpcBrowser.start()
             state = .discovering
             await refreshAndSyncPeers(source: "startup")
             startPeerRefreshLoopIfNeeded()
@@ -131,11 +136,24 @@ final class ConnectionManager: ObservableObject {
     private func runDiscoveryLoop() async {
         defer { discoveryTask = nil }
 
+        // Count loops without a Loom peer. After ~3 s (5 × ~600 ms), try MPC fallback.
+        var loomTimeoutLoops = 0
+
         while !Task.isCancelled {
             syncPeersFromContext(source: "discovery-loop")
-            let helpers = availableHelpers
-            if let target = autoConnectTarget(from: helpers) {
-                await connect(to: target)
+
+            // Prefer Loom (Bonjour + Tailscale + CloudKit trust).
+            if let target = autoConnectTarget(from: availableHelpers) {
+                await connect(to: .loom(target))
+                return
+            }
+
+            loomTimeoutLoops += 1
+
+            // Fall back to MPC after 5 loops without a Loom peer.
+            if loomTimeoutLoops >= 5, let mpcPeer = mpcBrowser.discoveredPeers.first {
+                recordEvent("No Loom peer found after \(loomTimeoutLoops) loops. Trying MPC fallback.")
+                await connect(to: .mpc(mpcPeer))
                 return
             }
 
@@ -144,18 +162,21 @@ final class ConnectionManager: ObservableObject {
         }
     }
 
+    private enum DiscoveredHelper {
+        case loom(LoomPeerSnapshot)
+        case mpc(MCPeerID)
+    }
+
     private func helperPeers() -> [LoomPeerSnapshot] {
         loomContext.peers
-            .filter {
-                let isAcceptableDeviceType = $0.deviceType == .mac || $0.deviceType == .unknown
-                return isAcceptableDeviceType
-            }
+            .filter { $0.deviceType == .mac || $0.deviceType == .unknown }
             .sorted { lhs, rhs in
                 lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
     }
 
     private func autoConnectTarget(from helpers: [LoomPeerSnapshot]) -> LoomPeerSnapshot? {
+        // Returns the best Loom peer to auto-connect to, or nil if none are available.
         guard !helpers.isEmpty else { return nil }
 
         if let preferredPeerID,
@@ -177,13 +198,19 @@ final class ConnectionManager: ObservableObject {
         return helpers.first(where: \.isNearby) ?? helpers.first
     }
 
-    private func connect(to peer: LoomPeerSnapshot) async {
+    private func connect(to target: DiscoveredHelper) async {
         discoveryTask?.cancel()
         discoveryTask = nil
         reconnectTask?.cancel()
         reconnectTask = nil
         diagnostics.connectAttempts += 1
-        recordEvent("Connecting to \(peer.name).")
+
+        let targetName: String
+        switch target {
+        case .loom(let peer): targetName = peer.name
+        case .mpc(let peer): targetName = peer.displayName
+        }
+        recordEvent("Connecting to \(targetName).")
 
         if let activeConnection = connection {
             await activeConnection.disconnect()
@@ -199,47 +226,80 @@ final class ConnectionManager: ObservableObject {
             recordEvent("Closed previous connection before reconnecting.")
         }
 
-        state = .connecting(peerName: peer.name)
+        state = .connecting(peerName: targetName)
 
         do {
-            let newConnection = try await loomContext.connect(peer)
-            connection = newConnection
-            connectedPeerID = peer.id.deviceID
-            state = .connected(peerName: peer.name)
-            rememberPreferredPeer(peer)
+            let channel: PeerChannelAdapter
+            switch target {
+            case .loom(let peer):
+                let handle = try await loomContext.connect(peer)
+                channel = await makeLoomChannelAdapter(handle: handle, peer: peer)
+                connectedPeerID = peer.id.deviceID
+                rememberPreferredPeer(peer)
+                mpcBrowser.stop()
+            case .mpc(let peer):
+                channel = try await mpcBrowser.connect(to: peer)
+                connectedPeerID = nil
+            }
+
+            connection = channel
+            state = .connected(peerName: targetName)
             hasEverConnected = true
             UserDefaults.standard.set(true, forKey: DefaultsKeys.hasEverConnected)
             reconnectAttempt = 0
-            startListening(on: newConnection)
-            startMonitoringConnectionEvents(on: newConnection)
+            startListening(on: channel)
+            startMonitoringConnectionEvents(on: channel)
+            startKeepalive(on: channel)
             diagnostics.connectSuccesses += 1
-            recordEvent("Connected to \(peer.name).")
+            recordEvent("Connected to \(targetName) via \(channel.transportType).")
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 do {
                     try await self.fetchModels()
                 } catch {
-                    // Model refresh is best-effort on connect; chat can still proceed.
-                    print("[ConnectionManager] Initial model refresh failed: \(error)")
                     self.recordError("Initial model refresh failed: \(error.localizedDescription)")
                 }
             }
         } catch {
             connectedPeerID = nil
-            state = .failed("Could not connect to \(peer.name): \(error.localizedDescription)")
-            recordError("Connect failed for \(peer.name): \(error.localizedDescription)")
+            state = .failed("Could not connect to \(targetName): \(error.localizedDescription)")
+            recordError("Connect failed for \(targetName): \(error.localizedDescription)")
             scheduleReconnectIfNeeded()
         }
     }
 
-    private func startListening(on activeConnection: LoomConnectionHandle) {
+    /// Wraps a LoomConnectionHandle in a PeerChannelAdapter, bridging its event stream.
+    private func makeLoomChannelAdapter(handle: LoomConnectionHandle, peer: LoomPeerSnapshot) async -> PeerChannelAdapter {
+        let (eventsStream, eventsCont) = AsyncStream.makeStream(of: PeerChannelEvent.self)
+        Task {
+            for await event in handle.events {
+                if case .disconnected = event {
+                    eventsCont.yield(.disconnected)
+                    eventsCont.finish()
+                    return
+                }
+            }
+            eventsCont.finish()
+        }
+        return PeerChannelAdapter(
+            id: await handle.id,
+            peerName: peer.name,
+            transportType: .loom,
+            messages: handle.messages,
+            events: eventsStream,
+            send: { data in try await handle.send(data) },
+            disconnect: { await handle.disconnect() }
+        )
+    }
+
+    private func startListening(on channel: PeerChannelAdapter) {
         listenTask?.cancel()
         listenTask = Task { [weak self] in
             guard let self else { return }
 
-            let expectedConnectionID = await activeConnection.id
-            for await data in activeConnection.messages {
+            let expectedConnectionID = channel.id
+            for await data in channel.messages {
                 self.processIncomingData(data)
             }
 
@@ -247,19 +307,42 @@ final class ConnectionManager: ObservableObject {
         }
     }
 
-    private func startMonitoringConnectionEvents(on activeConnection: LoomConnectionHandle) {
+    private func startMonitoringConnectionEvents(on channel: PeerChannelAdapter) {
         connectionEventTask?.cancel()
         connectionEventTask = Task { [weak self] in
             guard let self else { return }
 
-            let expectedConnectionID = await activeConnection.id
-            for await event in activeConnection.events {
+            let expectedConnectionID = channel.id
+            for await event in channel.events {
                 if case .disconnected = event {
                     await self.connectionDidEnd(expectedConnectionID: expectedConnectionID)
                     return
                 }
             }
         }
+    }
+
+    private func startKeepalive(on channel: PeerChannelAdapter) {
+        keepaliveTask?.cancel()
+        keepaliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
+                guard let self, !Task.isCancelled else { return }
+                await self.checkConnectionHealth(expectedConnectionID: channel.id, transportType: channel.transportType)
+            }
+        }
+    }
+
+    private func checkConnectionHealth(expectedConnectionID: UUID, transportType: PeerTransportType) async {
+        guard isConnected else { return }
+        if transportType == .loom {
+            let loomState = loomContext.connections.first(where: { $0.id == expectedConnectionID })?.state
+            if loomState == nil || loomState == .disconnected || loomState == .failed {
+                recordEvent("Keepalive: Loom connection gone — triggering reconnect.")
+                await connectionDidEnd(expectedConnectionID: expectedConnectionID)
+            }
+        }
+        // MPC self-reports via its event stream; no proactive check needed.
     }
 
     private func processIncomingData(_ data: Data) {
@@ -320,7 +403,7 @@ final class ConnectionManager: ObservableObject {
 
     private func connectionDidEnd(expectedConnectionID: UUID) async {
         guard let activeConnection = connection else { return }
-        let activeID = await activeConnection.id
+        let activeID = activeConnection.id
         guard activeID == expectedConnectionID else { return }
 
         connection = nil
@@ -329,6 +412,10 @@ final class ConnectionManager: ObservableObject {
         listenTask = nil
         connectionEventTask?.cancel()
         connectionEventTask = nil
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
+        inFlightModelFetch?.cancel()
+        inFlightModelFetch = nil
         finishActiveStreams()
         failPendingResponses(with: ProxyError.notConnected)
         diagnostics.disconnects += 1
@@ -337,12 +424,52 @@ final class ConnectionManager: ObservableObject {
         scheduleReconnectIfNeeded()
     }
 
+    func handleAppForeground() async {
+        recordEvent("App returned to foreground.")
+
+        if isConnected {
+            // Force-restart peer refresh loop — iOS may have suspended the running task.
+            peerRefreshTask?.cancel()
+            peerRefreshTask = nil
+            startPeerRefreshLoopIfNeeded()
+
+            // For Loom connections, check whether Loom still considers this connection live.
+            if let conn = connection, conn.transportType == .loom {
+                let connID = conn.id
+                let loomState = loomContext.connections.first(where: { $0.id == connID })?.state
+                if loomState == nil || loomState == .disconnected || loomState == .failed {
+                    await connectionDidEnd(expectedConnectionID: connID)
+                    return
+                }
+            }
+            // MPC connections self-report disconnection via their events stream — no extra check needed.
+
+            // Connection appears live — kick a model fetch to verify against the Mac.
+            // If the socket is stale, the send failure triggers reconnect automatically.
+            Task { @MainActor [weak self] in
+                try? await self?.fetchModels()
+            }
+            return
+        }
+
+        // Don't interrupt an in-progress connect attempt.
+        if case .connecting = state { return }
+
+        // Discovering, stalled, failed, or reconnect-exhausted — cancel any suspended tasks and restart.
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        peerRefreshTask?.cancel()
+        peerRefreshTask = nil
+        await startDiscovery()
+    }
+
     func refreshAvailableHelpers() async {
         await refreshAndSyncPeers(source: "manual-refresh")
         recordEvent("Manual helper refresh found \(availableHelpers.count) helper(s).")
     }
 
     func connectToHelper(peerID: LoomPeerID) async {
+        reconnectAttempt = 0
         syncPeersFromContext(source: "manual-connect")
         let currentHelpers = availableHelpers
 
@@ -352,7 +479,7 @@ final class ConnectionManager: ObservableObject {
             return
         }
 
-        await connect(to: target)
+        await connect(to: .loom(target))
     }
 
     // MARK: - API
@@ -380,19 +507,21 @@ final class ConnectionManager: ObservableObject {
             createdNewTask = true
         }
 
-        do {
-            let models = try await task.value
-            installedModels = models
-            recordEvent("Fetched \(installedModels.count) installed model(s).")
-        } catch {
-            if createdNewTask {
-                inFlightModelFetch = nil
-            }
-            throw error
-        }
+        defer { if createdNewTask { inFlightModelFetch = nil } }
 
-        if createdNewTask {
-            inFlightModelFetch = nil
+        let models = try await task.value
+        installedModels = models
+        recordEvent("Fetched \(installedModels.count) installed model(s).")
+    }
+
+    func backup(filename: String, payload: String) async {
+        guard let activeConnection = connection else { return }
+        let request = ProxyRequest(id: UUID().uuidString, type: .backup, model: filename, payload: payload)
+        do {
+            try await activeConnection.send(request)
+            diagnostics.requestsSent += 1
+        } catch {
+            // Backup is best-effort; silence failures.
         }
     }
 
@@ -421,6 +550,15 @@ final class ConnectionManager: ObservableObject {
                 }
 
                 self.chatContinuations[id] = continuation
+                continuation.onTermination = { [weak self] termination in
+                    Task { @MainActor in
+                        self?.chatContinuations.removeValue(forKey: id)
+                        if case .cancelled = termination {
+                            self?.diagnostics.chatStreamCancellations += 1
+                            self?.recordEvent("Chat stream cancelled by client.")
+                        }
+                    }
+                }
                 do {
                     try await activeConnection.send(request)
                     self.diagnostics.requestsSent += 1
@@ -429,16 +567,6 @@ final class ConnectionManager: ObservableObject {
                     self.recordError("Failed to send chat request: \(error.localizedDescription)")
                     await self.handleSendFailure(error, on: activeConnection, context: "chat")
                     continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { [weak self] termination in
-                Task { @MainActor in
-                    self?.chatContinuations.removeValue(forKey: id)
-                    if case .cancelled = termination {
-                        self?.diagnostics.chatStreamCancellations += 1
-                        self?.recordEvent("Chat stream cancelled by client.")
-                    }
                 }
             }
         }
@@ -461,6 +589,17 @@ final class ConnectionManager: ObservableObject {
                 }
 
                 self.pullContinuations[id] = continuation
+                continuation.onTermination = { [weak self] termination in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.pullContinuations.removeValue(forKey: id)
+                        if case .cancelled = termination {
+                            self.diagnostics.pullStreamCancellations += 1
+                            self.recordEvent("Pull stream cancelled by client.")
+                            await self.sendCancelRequest(for: id)
+                        }
+                    }
+                }
                 do {
                     try await activeConnection.send(request)
                     self.diagnostics.requestsSent += 1
@@ -469,18 +608,6 @@ final class ConnectionManager: ObservableObject {
                     self.recordError("Failed to send pull request: \(error.localizedDescription)")
                     await self.handleSendFailure(error, on: activeConnection, context: "pull")
                     continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { [weak self] termination in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.pullContinuations.removeValue(forKey: id)
-                    if case .cancelled = termination {
-                        self.diagnostics.pullStreamCancellations += 1
-                        self.recordEvent("Pull stream cancelled by client.")
-                        await self.sendCancelRequest(for: id)
-                    }
                 }
             }
         }
@@ -556,6 +683,13 @@ final class ConnectionManager: ObservableObject {
             self.diagnostics.requestTimeouts += 1
             self.recordError("Request \(requestID) timed out.")
             pending.resume(throwing: ProxyError.timeout)
+
+            // Only tear down if no active streams would be collaterally killed.
+            // A background model fetch timing out should not terminate an in-progress chat or download.
+            guard self.chatContinuations.isEmpty, self.pullContinuations.isEmpty else { return }
+            guard let conn = self.connection else { return }
+            let connID = conn.id
+            await self.connectionDidEnd(expectedConnectionID: connID)
         }
     }
 
@@ -582,9 +716,19 @@ final class ConnectionManager: ObservableObject {
             if !hasEverConnected {
                 return
             }
-            state = .failed("Couldn’t reconnect to your Mac automatically. Tap Try Again.")
+            // Fast retries exhausted. Reset the counter and schedule a slower retry in 30s
+            // rather than giving up — the Mac may just be sleeping or temporarily unreachable.
             diagnostics.reconnectExhausted += 1
-            recordError("Reconnect attempts exhausted.")
+            reconnectAttempt = 0
+            state = .reconnecting(peerName: lastConnectedPeerName, attempt: 0)
+            recordEvent("Fast reconnect attempts exhausted. Retrying in 30s.")
+            reconnectTask?.cancel()
+            reconnectTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                await self.startDiscovery(resetReconnectAttempts: true)
+                self.reconnectTask = nil
+            }
             return
         }
 
@@ -619,23 +763,28 @@ final class ConnectionManager: ObservableObject {
 
     private func handleSendFailure(
         _ error: Error,
-        on activeConnection: LoomConnectionHandle,
+        on channel: PeerChannelAdapter,
         context: String
     ) async {
-        let nsError = error as NSError
-        let isSocketDisconnected =
-            nsError.domain == "Network.NWError" &&
-            nsError.code == 57
+        let shouldReconnect: Bool
+        switch channel.transportType {
+        case .loom:
+            // Loom signals a closed socket with NWError code 57.
+            let nsError = error as NSError
+            shouldReconnect = nsError.domain == "Network.NWError" && nsError.code == 57
+        case .mpc:
+            // Any MPC send failure indicates the session is gone.
+            shouldReconnect = true
+        }
 
-        guard isSocketDisconnected else { return }
+        guard shouldReconnect else { return }
 
         recordEvent(
-            "Detected closed Loom socket while sending \(context). Triggering reconnect.",
+            "Detected closed \(channel.transportType) socket while sending \(context). Triggering reconnect.",
             level: .warning
         )
 
-        let connectionID = await activeConnection.id
-        await connectionDidEnd(expectedConnectionID: connectionID)
+        await connectionDidEnd(expectedConnectionID: channel.id)
     }
 
     private func refreshAndSyncPeers(source: String) async {
@@ -654,7 +803,15 @@ final class ConnectionManager: ObservableObject {
         }
         let helpers = helperPeers()
 
-        availableHelpers = helpers
+        // Only update availableHelpers when the peer set actually changes.
+        // Skip if the new list is empty but we already have entries —
+        // Loom's peer browser can momentarily return zero peers mid-refresh cycle.
+        let newIDs = helpers.map { $0.id }
+        let currentIDs = availableHelpers.map { $0.id }
+        if newIDs != currentIDs && (!helpers.isEmpty || availableHelpers.isEmpty) {
+            availableHelpers = helpers
+        }
+
         diagnostics.visiblePeerCount = allPeers.count
         diagnostics.visibleHelperCount = helpers.count
 
@@ -698,6 +855,10 @@ final class ConnectionManager: ObservableObject {
             diagnostics.lastError = message
         }
 
+        let limit = 40
+        if diagnostics.recentEvents.count >= limit {
+            diagnostics.recentEvents.removeFirst()
+        }
         diagnostics.recentEvents.append(
             ConnectionDiagnosticEvent(
                 timestamp: Date(),
@@ -705,11 +866,6 @@ final class ConnectionManager: ObservableObject {
                 message: message
             )
         )
-
-        let limit = 40
-        if diagnostics.recentEvents.count > limit {
-            diagnostics.recentEvents.removeFirst(diagnostics.recentEvents.count - limit)
-        }
     }
 
     private func recordError(_ message: String) {
@@ -772,107 +928,6 @@ extension ProxyError: LocalizedError {
         case .remote(let message):
             return message
         }
-    }
-}
-
-// MARK: - Wire protocol (mirrored from PastureHelper)
-
-enum ProxyRequestType: String, Codable, Sendable {
-    case tags, chat, pull, delete, cancel
-}
-
-enum ProxyResponseType: String, Codable, Sendable {
-    case tags, chat, pull, delete, cancel, error
-}
-
-struct ProxyRequest: Codable, Sendable {
-    let id: String
-    let type: ProxyRequestType
-    let model: String?
-    let messages: [ChatMessage]?
-    let targetRequestID: String?
-
-    init(
-        id: String,
-        type: ProxyRequestType,
-        model: String? = nil,
-        messages: [ChatMessage]? = nil,
-        targetRequestID: String? = nil
-    ) {
-        self.id = id
-        self.type = type
-        self.model = model
-        self.messages = messages
-        self.targetRequestID = targetRequestID
-    }
-
-    static func cancelRequest(targetRequestID: String) -> ProxyRequest {
-        ProxyRequest(
-            id: UUID().uuidString,
-            type: .cancel,
-            targetRequestID: targetRequestID
-        )
-    }
-}
-
-struct ProxyResponse: Codable, Sendable {
-    let id: String
-    let type: ProxyResponseType
-    var models: [OllamaModel]?
-    var token: String?
-    var pullProgress: PullProgress?
-    var errorMessage: String?
-    var done: Bool
-
-    init(
-        id: String,
-        type: ProxyResponseType,
-        models: [OllamaModel]? = nil,
-        token: String? = nil,
-        pullProgress: PullProgress? = nil,
-        errorMessage: String? = nil,
-        done: Bool
-    ) {
-        self.id = id
-        self.type = type
-        self.models = models
-        self.token = token
-        self.pullProgress = pullProgress
-        self.errorMessage = errorMessage
-        self.done = done
-    }
-}
-
-struct OllamaModel: Codable, Identifiable, Sendable, Hashable {
-    var id: String { name }
-    let name: String
-    let size: Int64?
-    let details: ModelDetails?
-
-    struct ModelDetails: Codable, Sendable, Hashable {
-        let family: String?
-        let parameterSize: String?
-
-        enum CodingKeys: String, CodingKey {
-            case family
-            case parameterSize = "parameter_size"
-        }
-    }
-}
-
-struct ChatMessage: Codable, Sendable {
-    let role: String
-    let content: String
-}
-
-struct PullProgress: Codable, Sendable {
-    let status: String
-    let total: Int64?
-    let completed: Int64?
-
-    var fraction: Double {
-        guard let total, let completed, total > 0 else { return 0 }
-        return Double(completed) / Double(total)
     }
 }
 

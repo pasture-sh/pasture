@@ -2,10 +2,14 @@ import XCTest
 @testable import Pasture
 
 final class ModelEnvironmentTests: XCTestCase {
-    func testTimeOfDayBoundaries() {
+    private var utcCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        return calendar
+    }
 
+    func testTimeOfDayBoundaries() {
+        let calendar = utcCalendar
         XCTAssertEqual(TimeOfDay.from(date: makeDate(hour: 5), calendar: calendar), .night)
         XCTAssertEqual(TimeOfDay.from(date: makeDate(hour: 6), calendar: calendar), .morning)
         XCTAssertEqual(TimeOfDay.from(date: makeDate(hour: 11), calendar: calendar), .morning)
@@ -19,6 +23,8 @@ final class ModelEnvironmentTests: XCTestCase {
     func testModelComplexityParsing() {
         XCTAssertEqual(ModelComplexity.from(modelName: "phi-3-mini"), .small)
         XCTAssertEqual(ModelComplexity.from(modelName: "llama3:3b"), .small)
+        XCTAssertEqual(ModelComplexity.from(modelName: "test:4b"), .small)    // upper boundary of .small
+        XCTAssertEqual(ModelComplexity.from(modelName: "test:5b"), .medium)   // lower boundary of .medium
         XCTAssertEqual(ModelComplexity.from(modelName: "mistral:7b"), .medium)
         XCTAssertEqual(ModelComplexity.from(modelName: "llama3:8b"), .medium)
         XCTAssertEqual(ModelComplexity.from(modelName: "qwen:13b"), .medium)
@@ -51,9 +57,6 @@ final class ModelEnvironmentTests: XCTestCase {
     }
 
     private func makeDate(hour: Int) -> Date {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
-
         var components = DateComponents()
         components.year = 2026
         components.month = 1
@@ -61,7 +64,6 @@ final class ModelEnvironmentTests: XCTestCase {
         components.hour = hour
         components.minute = 0
         components.second = 0
-
-        return calendar.date(from: components) ?? Date(timeIntervalSince1970: 0)
+        return utcCalendar.date(from: components) ?? Date(timeIntervalSince1970: 0)
     }
 }

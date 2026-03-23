@@ -1,10 +1,11 @@
 import SwiftUI
+import PastureShared
 
 struct ModelManagerView: View {
     @StateObject private var viewModel = ModelManagerViewModel()
     @State private var selectedTab: Tab = .library
     @State private var downloadTask: Task<Void, Never>?
-    private let accentColor = Color(red: 0.96, green: 0.78, blue: 0.26)
+    private let accentColor = PastureColors.accent
 
     enum Tab: String, CaseIterable, Identifiable {
         case library = "Library"
@@ -120,7 +121,7 @@ private struct CuratedLibraryTab: View {
                         model: model,
                         isInstalled: viewModel.isInstalled(model),
                         isDownloading: viewModel.activeDownload?.modelID == model.id,
-                        accentColor: Color(red: 0.96, green: 0.78, blue: 0.26),
+                        accentColor: PastureColors.accent,
                         cardColor: Color(red: 0.96, green: 0.94, blue: 0.86).opacity(0.3)
                     ) {
                         onDownload(model)

@@ -10,6 +10,8 @@ struct RootView: View {
     @AppStorage("pasture.onboarding.completed") private var hasCompletedOnboarding = false
     @State private var onboardingStep: OnboardingStep = .welcome
     @State private var connectionToastMessage: String?
+    @State private var toastDismissTask: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -26,6 +28,10 @@ struct RootView: View {
         .onChange(of: connection.state) { _, newState in
             guard case .connected(let peerName) = newState else { return }
             handleConnected(peerName: peerName)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await connection.handleAppForeground() }
         }
     }
 
@@ -70,7 +76,6 @@ struct RootView: View {
                 },
                 onContinueToPairing: {
                     onboardingStep = .waiting
-                    Task { await connection.startDiscovery() }
                 },
                 onRetry: {
                     Task { await connection.startDiscovery() }
@@ -96,8 +101,10 @@ struct RootView: View {
             hasCompletedOnboarding = true
         }
 
-        Task {
+        toastDismissTask?.cancel()
+        toastDismissTask = Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 withAnimation {
                     connectionToastMessage = nil
@@ -120,6 +127,7 @@ private struct OnboardingFlowView: View {
     let onContinueToPairing: () -> Void
     let onRetry: () -> Void
     private let palette = ModelEnvironment.chat(for: nil).palette
+    @EnvironmentObject private var connection: ConnectionManager
 
     var body: some View {
         ZStack {
@@ -139,6 +147,7 @@ private struct OnboardingFlowView: View {
             }
         }
         .fontDesign(.rounded)
+        .task { await connection.startDiscovery() }
     }
 }
 
@@ -158,19 +167,14 @@ private struct WelcomeStepView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            PasturePresenceGlyph(palette: palette)
-
             VStack(spacing: 12) {
                 Text("Pasture")
                     .font(.custom("Nunito-ExtraBold", size: 34))
                     .foregroundStyle(.white)
 
-                Text("Where your models roam free.")
-                    .font(.system(size: 26, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .multilineTextAlignment(.center)
+                TypingTaglineView()
 
-                Text("The easiest way to use Ollama on your iPhone.")
+                Text("The easiest way to use Ollama on your iPhone")
                     .font(.system(size: 15, weight: .regular, design: .rounded))
                     .foregroundStyle(.white.opacity(0.74))
                     .multilineTextAlignment(.center)
@@ -192,100 +196,197 @@ private struct WelcomeStepView: View {
     }
 }
 
+private struct TypingTaglineView: View {
+    private let taglines = [
+        "Where your models roam free",
+        "Private by nature",
+        "Fast as instinct",
+        "Local AI wherever you go",
+        "Ready to graze?",
+    ]
+
+    @State private var displayedText = ""
+    @State private var cursorOpacity: Double = 1
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 2) {
+            Text(displayedText)
+                .font(.system(size: 26, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+            Rectangle()
+                .fill(.white.opacity(0.75))
+                .frame(width: 2, height: 29)
+                .opacity(cursorOpacity)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
+                cursorOpacity = 0
+            }
+        }
+        .task {
+            await runLoop()
+        }
+    }
+
+    private func runLoop() async {
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        var index = 0
+        while !Task.isCancelled {
+            let tagline = taglines[index]
+            for charCount in 1...tagline.count {
+                guard !Task.isCancelled else { return }
+                let end = tagline.index(tagline.startIndex, offsetBy: charCount)
+                displayedText = String(tagline[..<end])
+                try? await Task.sleep(nanoseconds: 55_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            while !displayedText.isEmpty {
+                guard !Task.isCancelled else { return }
+                displayedText = String(displayedText.dropLast())
+                try? await Task.sleep(nanoseconds: 32_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            index = (index + 1) % taglines.count
+        }
+    }
+}
+
+private enum HelperSearchState: Equatable {
+    case searching
+    case macFound
+    case timedOut
+}
+
 private struct InstallHelperStepView: View {
     let palette: EnvironmentPalette
     let onContinue: () -> Void
+    @EnvironmentObject private var connection: ConnectionManager
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @State private var searchState: HelperSearchState = .searching
+    @State private var stickyHelpers: [LoomPeerSnapshot] = []
 
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
 
-            HStack(spacing: 16) {
-                Image(systemName: "desktopcomputer")
-                    .font(.system(size: 34, weight: .semibold))
-                Image(systemName: "arrow.left.and.right.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                Image(systemName: "iphone")
-                    .font(.system(size: 30, weight: .semibold))
-            }
-            .foregroundStyle(.white.opacity(0.95))
+            Image(systemName: "desktopcomputer")
+                .font(.system(size: 44, weight: .medium))
+                .foregroundStyle(.white.opacity(iconOpacity))
+                .animation(.easeInOut(duration: 0.4), value: searchState)
 
             VStack(spacing: 10) {
-                Text("Open Pasture on your Mac")
-                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                Text(headline)
+                    .font(.system(.title2, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
+                    .animation(.easeInOut(duration: 0.3), value: searchState)
 
-                Text("No accounts, IP addresses, or setup rituals. Keep this screen open and your Mac will appear automatically.")
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.74))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 30)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                onboardingNote("Same Wi-Fi on both devices")
-                onboardingNote("Ollama installed on your Mac")
-                onboardingNote("Pasture for Mac left open while pairing")
-            }
-            .padding(18)
-            .modifier(OnboardingCardModifier())
-            .padding(.horizontal, 24)
-
-            Spacer()
-
-            VStack(spacing: 6) {
-                if let helperDownloadURL {
-                    OnboardingPrimaryCTA(
-                        title: "Get Pasture for Mac",
-                        palette: palette,
-                        reduceTransparency: reduceTransparency
-                    ) {
-                        openURL(helperDownloadURL)
-                    }
-                    .padding(.horizontal, 24)
-                } else {
-                    VStack(spacing: 3) {
-                        Text("Pasture for Mac is available on")
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
-                        Link("pasture.sh →", destination: URL(string: "https://pasture.sh")!)
-                            .font(.system(.footnote, design: .rounded, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.90))
-                        Text("Open it on your Mac, then tap below.")
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.74))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 36)
+                        .transition(.opacity)
                 }
+            }
 
-                OnboardingPrimaryCTA(
-                    title: "My Mac is ready →",
-                    palette: palette,
-                    reduceTransparency: reduceTransparency,
-                    action: onContinue
-                )
-                .padding(.horizontal, 24)
-                .padding(.bottom, 30)
+            if case .searching = searchState {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.85)
+                    .transition(.opacity)
+            }
+
+            Spacer()
+
+            VStack(spacing: 16) {
+                switch searchState {
+                case .searching:
+                    EmptyView()
+
+                case .macFound:
+                    ForEach(stickyHelpers, id: \.id) { peer in
+                        MacConnectButton(peer: peer, palette: palette, reduceTransparency: reduceTransparency)
+                            .padding(.horizontal, 24)
+                    }
+
+                case .timedOut:
+                    if let helperDownloadURL {
+                        OnboardingPrimaryCTA(
+                            title: "Get Pasture for Mac",
+                            palette: palette,
+                            reduceTransparency: reduceTransparency
+                        ) {
+                            openURL(helperDownloadURL)
+                        }
+                        .padding(.horizontal, 24)
+                    } else {
+                        HStack(spacing: 4) {
+                            Text("Get Pasture for Mac at")
+                                .font(.system(.footnote, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.65))
+                            Link("pasture.sh →", destination: URL(string: "https://pasture.sh")!)
+                                .font(.system(.footnote, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.90))
+                        }
+                    }
+
+                    Button("My Mac is open →") {
+                        onContinue()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+            .padding(.bottom, 30)
+            .animation(.easeInOut(duration: 0.35), value: searchState == .macFound)
+        }
+        .onAppear { latchHelpers(connection.availableHelpers) }
+        .onChange(of: connection.availableHelpers) { _, helpers in latchHelpers(helpers) }
+        .task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if case .searching = searchState {
+                withAnimation { searchState = .timedOut }
             }
         }
     }
 
-    private func onboardingNote(_ text: String) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(.white.opacity(0.22))
-                .frame(width: 6, height: 6)
-            Text(text)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
-                .foregroundStyle(.white.opacity(0.82))
-            Spacer()
+    // MARK: - State-derived
+
+    private var headline: String {
+        switch searchState {
+        case .searching: return "Looking for your Mac\u{2026}"
+        case .macFound:  return "Your Mac is here"
+        case .timedOut:  return "Set up Pasture on your Mac"
         }
     }
+
+    private var subtitle: String? {
+        switch searchState {
+        case .searching: return "Keep this screen open"
+        case .macFound:  return nil
+        case .timedOut:  return "Download and open Pasture for Mac, then come back here."
+        }
+    }
+
+    private var iconOpacity: Double {
+        searchState == .timedOut ? 0.80 : 0.90
+    }
+
+    // MARK: - Helpers
+
+    private func latchHelpers(_ helpers: [LoomPeerSnapshot]) {
+        guard !helpers.isEmpty else { return }
+        stickyHelpers = helpers
+        searchState = .macFound
+    }
+
+    // MARK: - Download URL
 
     private var helperDownloadURL: URL? {
         let rawValue =
@@ -303,6 +404,40 @@ private struct InstallHelperStepView: View {
     }
 }
 
+private struct MacConnectButton: View {
+    let peer: LoomPeerSnapshot
+    let palette: EnvironmentPalette
+    let reduceTransparency: Bool
+    @EnvironmentObject private var connection: ConnectionManager
+
+    var body: some View {
+        Button {
+            Task { await connection.connectToHelper(peerID: peer.id) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: peer.deviceType.systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(peer.name)
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                Spacer()
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 18))
+            }
+            .foregroundStyle(ctaTextColor)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .modifier(OnboardingPrimaryCTAModifier(palette: palette, reduceTransparency: reduceTransparency))
+    }
+
+    private var ctaTextColor: Color {
+        if #available(iOS 26.0, *), !reduceTransparency { return .white }
+        return palette.userBubble
+    }
+}
+
 private struct WaitingForMacStepView: View {
     @EnvironmentObject private var connection: ConnectionManager
     let state: ConnectionManager.ConnectionState
@@ -313,17 +448,12 @@ private struct WaitingForMacStepView: View {
     /// in and out as Loom's peer refresh cycles.
     @State private var stickyHelpers: [LoomPeerSnapshot] = []
     @State private var showDiagnostics = false
-    @State private var glyphBreathe = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
                 Spacer(minLength: 32)
-
-                PasturePresenceGlyph(palette: palette)
-                    .opacity(glyphOpacity)
-                    .scaleEffect(glyphBreathe && glyphShouldAnimate ? 1.02 : 0.98)
 
                 statusCapsule
 
@@ -337,8 +467,8 @@ private struct WaitingForMacStepView: View {
                 // Not hidden when the list briefly empties during a refresh.
                 if !stickyHelpers.isEmpty {
                     VStack(spacing: 10) {
-                        ForEach(stickyHelpers) { peer in
-                            macConnectButton(for: peer)
+                        ForEach(stickyHelpers, id: \.id) { peer in
+                            MacConnectButton(peer: peer, palette: palette, reduceTransparency: reduceTransparency)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -389,47 +519,17 @@ private struct WaitingForMacStepView: View {
         .scrollBounceBehavior(.basedOnSize)
         .onAppear {
             latchHelpers(connection.availableHelpers)
-            startGlyphAnimationIfNeeded()
         }
         .onChange(of: connection.availableHelpers) { _, helpers in
             latchHelpers(helpers)
         }
-        .onChange(of: state) { _, _ in
-            startGlyphAnimationIfNeeded()
-        }
     }
+
 
     // MARK: - Helpers
 
     private func latchHelpers(_ helpers: [LoomPeerSnapshot]) {
         if !helpers.isEmpty { stickyHelpers = helpers }
-    }
-
-    private func macConnectButton(for peer: LoomPeerSnapshot) -> some View {
-        Button {
-            Task { await connection.connectToHelper(peerID: peer.id) }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: peer.deviceType.systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                Text(peer.name)
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                Spacer()
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.system(size: 18))
-            }
-            .foregroundStyle(ctaTextColor)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-        .modifier(OnboardingPrimaryCTAModifier(palette: palette, reduceTransparency: reduceTransparency))
-    }
-
-    private var ctaTextColor: Color {
-        if #available(iOS 26.0, *), !reduceTransparency { return .white }
-        return palette.userBubble
     }
 
     // MARK: - State-derived
@@ -478,36 +578,6 @@ private struct WaitingForMacStepView: View {
             .padding(.horizontal, 24)
     }
 
-    private var glyphOpacity: Double {
-        if case .failed = state { return stickyHelpers.isEmpty ? 0.55 : 1.0 }
-        return 1.0
-    }
-
-    private var glyphShouldAnimate: Bool {
-        switch state {
-        case .discovering, .connecting, .reconnecting: return true
-        case .failed, .connected: return false
-        }
-    }
-
-    private var glyphDuration: Double {
-        switch state {
-        case .connecting: return 1.4
-        case .discovering, .reconnecting: return 2.4
-        case .failed, .connected: return 0
-        }
-    }
-
-    private func startGlyphAnimationIfNeeded() {
-        guard glyphShouldAnimate else {
-            glyphBreathe = false
-            return
-        }
-        glyphBreathe = false
-        withAnimation(.easeInOut(duration: glyphDuration).repeatForever(autoreverses: true)) {
-            glyphBreathe = true
-        }
-    }
 }
 
 
@@ -655,8 +725,6 @@ struct DiscoveringView: View {
             BackgroundView()
 
             VStack(spacing: 18) {
-                PasturePresenceGlyph(palette: ModelEnvironment.onboardingDefault.palette)
-
                 Text(status)
                     .font(.system(size: 17, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.84))
@@ -701,25 +769,6 @@ struct ErrorView: View {
     }
 }
 
-private struct PasturePresenceGlyph: View {
-    let palette: EnvironmentPalette
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(.white.opacity(0.12))
-                .frame(width: 112, height: 112)
-
-            Circle()
-                .stroke(.white.opacity(0.14), lineWidth: 1)
-                .frame(width: 112, height: 112)
-
-            Image(systemName: "leaf.fill")
-                .font(.system(size: 44, weight: .regular))
-                .foregroundStyle(.white.opacity(0.94))
-        }
-    }
-}
 
 private struct OnboardingPrimaryCTA: View {
     let title: String

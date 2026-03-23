@@ -1,6 +1,10 @@
 import Foundation
 import SwiftData
 
+enum MessageRole: String {
+    case user, assistant
+}
+
 @Model
 final class MessageRecord {
     @Attribute(.unique) var id: UUID

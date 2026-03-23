@@ -20,8 +20,6 @@ final class MenuBarController {
         popover.animates = true
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: "Pasture")
-            button.image?.isTemplate = true
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -87,29 +85,33 @@ final class MenuBarController {
     ) {
         guard let button = statusItem.button else { return }
 
-        let pastureGreen = NSColor(red: 0.690, green: 0.894, blue: 0.416, alpha: 1)
-
         let tintColor: NSColor
         let tooltip: String
         if !ollamaIsReachable {
             tintColor = .systemRed
             tooltip = "Pasture: Ollama not running"
         } else if connectedPeerName != nil {
-            tintColor = pastureGreen
+            tintColor = PastureColors.accentNS
             tooltip = "Pasture: iPhone connected"
         } else if isPaused {
             tintColor = .systemOrange
             tooltip = "Pasture: discovery paused"
         } else if isAdvertising {
-            tintColor = pastureGreen
+            tintColor = PastureColors.accentNS
             tooltip = "Pasture: ready"
         } else {
             tintColor = .systemGray
             tooltip = "Pasture: starting up"
         }
 
-        button.contentTintColor = tintColor
+        let config = NSImage.SymbolConfiguration(paletteColors: [tintColor])
+        button.image = NSImage(systemSymbolName: "sun.horizon.fill", accessibilityDescription: "Pasture")?
+            .withSymbolConfiguration(config)
         button.toolTip = tooltip
+    }
+
+    func handleWakeFromSleep() {
+        Task { await advertiser.restartAfterWake() }
     }
 
     private func showModelManager() {

@@ -11,7 +11,6 @@ struct EnvironmentPalette {
     let foregroundLayer: Color
     let cloudTint: Color
     let atmosphereTint: Color
-    let celestialTint: Color
     let accent: Color
     let userBubble: Color
     let primaryTextOnAccent: Color
@@ -85,11 +84,10 @@ enum ModelComplexity: String, Equatable {
         return .medium
     }
 
-    private static func extractParameterBillions(from modelName: String) -> Int? {
-        guard let regex = try? NSRegularExpression(pattern: "(\\d+)\\s*b", options: [.caseInsensitive]) else {
-            return nil
-        }
+    private static let paramBillionsRegex = try! NSRegularExpression(pattern: "(\\d+)\\s*b", options: [.caseInsensitive])
 
+    private static func extractParameterBillions(from modelName: String) -> Int? {
+        let regex = paramBillionsRegex
         let nsRange = NSRange(modelName.startIndex..<modelName.endIndex, in: modelName)
         let matches = regex.matches(in: modelName, options: [], range: nsRange)
         guard let valueRange = matches
@@ -159,7 +157,6 @@ struct ModelEnvironment: Equatable, Identifiable {
             foregroundLayer: base.foregroundLayer,
             cloudTint: base.cloudTint,
             atmosphereTint: base.atmosphereTint,
-            celestialTint: base.celestialTint,
             accent: base.accent,
             userBubble: base.userBubble,
             primaryTextOnAccent: base.primaryTextOnAccent,
@@ -185,7 +182,7 @@ struct ModelEnvironment: Equatable, Identifiable {
         )
     }
 
-    private static func basePalette(for timeOfDay: TimeOfDay, isLateNight: Bool) -> (skyTop: Color, skyBottom: Color, horizonGlow: Color, farLayer: Color, midLayer: Color, nearLayer: Color, foregroundLayer: Color, cloudTint: Color, atmosphereTint: Color, celestialTint: Color, accent: Color, userBubble: Color, primaryTextOnAccent: Color) {
+    private static func basePalette(for timeOfDay: TimeOfDay, isLateNight: Bool) -> (skyTop: Color, skyBottom: Color, horizonGlow: Color, farLayer: Color, midLayer: Color, nearLayer: Color, foregroundLayer: Color, cloudTint: Color, atmosphereTint: Color, accent: Color, userBubble: Color, primaryTextOnAccent: Color) {
         switch timeOfDay {
         case .morning:
             return (
@@ -198,7 +195,6 @@ struct ModelEnvironment: Equatable, Identifiable {
                 foregroundLayer: Color(hex: "5A7053"),
                 cloudTint: .white.opacity(0.54),
                 atmosphereTint: Color(hex: "EADAB4").opacity(0.30),
-                celestialTint: Color(hex: "FFF7E4"),
                 accent: Color(hex: "D9BC7A"),
                 userBubble: Color(hex: "617F67"),
                 primaryTextOnAccent: Color(red: 0.19, green: 0.21, blue: 0.16)
@@ -214,7 +210,6 @@ struct ModelEnvironment: Equatable, Identifiable {
                 foregroundLayer: Color(hex: "586C52"),
                 cloudTint: .white.opacity(0.44),
                 atmosphereTint: Color(hex: "DBD8B6").opacity(0.24),
-                celestialTint: Color(hex: "FFF8EA"),
                 accent: Color(hex: "CDB77A"),
                 userBubble: Color(hex: "58725E"),
                 primaryTextOnAccent: Color(red: 0.18, green: 0.20, blue: 0.15)
@@ -230,7 +225,6 @@ struct ModelEnvironment: Equatable, Identifiable {
                 foregroundLayer: Color(hex: "3C3228"),
                 cloudTint: Color(hex: "FFE8B0").opacity(0.50),
                 atmosphereTint: Color(hex: "D4845A").opacity(0.22),
-                celestialTint: Color(hex: "FFE8A0"),
                 accent: Color(hex: "D98040"),
                 userBubble: Color(hex: "7A5C44"),
                 primaryTextOnAccent: Color(red: 0.22, green: 0.16, blue: 0.10)
@@ -246,7 +240,6 @@ struct ModelEnvironment: Equatable, Identifiable {
                 foregroundLayer: Color(hex: isLateNight ? "1A201A" : "272D25"),
                 cloudTint: Color(hex: "E3E7F3").opacity(isLateNight ? 0.14 : 0.24),
                 atmosphereTint: Color(hex: isLateNight ? "222C3D" : "4B5770").opacity(isLateNight ? 0.28 : 0.24),
-                celestialTint: Color(hex: "E7EBF7"),
                 accent: Color(hex: "CBB98B"),
                 userBubble: Color(hex: isLateNight ? "4A574A" : "556557"),
                 primaryTextOnAccent: Color(red: 0.18, green: 0.17, blue: 0.13)

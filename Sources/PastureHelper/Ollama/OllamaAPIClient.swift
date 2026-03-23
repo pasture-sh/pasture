@@ -1,9 +1,15 @@
 import Foundation
+import PastureShared
 
 /// Communicates with the local Ollama HTTP API on localhost:11434.
 actor OllamaAPIClient {
     static let shared = OllamaAPIClient()
     private let baseURL = URL(string: "http://localhost:11434")!
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        return URLSession(configuration: config)
+    }()
 
     // MARK: - Tags (list installed models)
 
@@ -27,7 +33,7 @@ actor OllamaAPIClient {
                     let body = ChatRequest(model: model, messages: messages, stream: true)
                     request.httpBody = try JSONEncoder().encode(body)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await session.bytes(for: request)
                     try validate(response)
                     for try await line in bytes.lines {
                         guard !line.isEmpty,
@@ -73,7 +79,7 @@ actor OllamaAPIClient {
                     let body = PullRequest(name: model, stream: true)
                     request.httpBody = try JSONEncoder().encode(body)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await session.bytes(for: request)
                     try validate(response)
                     for try await line in bytes.lines {
                         guard !line.isEmpty,
@@ -86,7 +92,7 @@ actor OllamaAPIClient {
                         }
 
                         continuation.yield(progress)
-                        if progress.status == "success" { break }
+                        if progress.isComplete { break }
                         try Task.checkCancellation()
                     }
                     continuation.finish()
@@ -117,7 +123,7 @@ actor OllamaAPIClient {
     // MARK: - Health check
 
     func isReachable() async -> Bool {
-        let url = baseURL.appendingPathComponent("api/tags")
+        let url = baseURL.appendingPathComponent("api/version")
         do {
             _ = try await validatedData(for: url)
             return true
@@ -127,13 +133,13 @@ actor OllamaAPIClient {
     }
 
     private func validatedData(for url: URL) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         try validate(response, data: data)
         return data
     }
 
     private func validatedData(for request: URLRequest) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validate(response, data: data)
         return data
     }
@@ -173,30 +179,8 @@ actor OllamaAPIClient {
 
 // MARK: - Models
 
-struct OllamaModel: Codable, Identifiable, Sendable {
-    var id: String { name }
-    let name: String
-    let size: Int64?
-    let details: ModelDetails?
-
-    struct ModelDetails: Codable, Sendable {
-        let family: String?
-        let parameterSize: String?
-
-        enum CodingKeys: String, CodingKey {
-            case family
-            case parameterSize = "parameter_size"
-        }
-    }
-}
-
 struct TagsResponse: Codable {
     let models: [OllamaModel]
-}
-
-struct ChatMessage: Codable, Sendable {
-    let role: String
-    let content: String
 }
 
 struct ChatRequest: Codable {
@@ -214,18 +198,6 @@ struct ChatChunk: Codable {
 struct PullRequest: Codable {
     let name: String
     let stream: Bool
-}
-
-struct PullProgress: Codable, Sendable {
-    let status: String
-    let total: Int64?
-    let completed: Int64?
-    let error: String?
-
-    var fraction: Double {
-        guard let total, let completed, total > 0 else { return 0 }
-        return Double(completed) / Double(total)
-    }
 }
 
 enum OllamaAPIError: LocalizedError {

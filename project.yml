@@ -8,6 +8,10 @@ options:
   generateEmptyDirectories: true
   createIntermediateGroups: true
 
+settings:
+  base:
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+
 packages:
   Loom:
     url: https://github.com/EthanLipnik/Loom
@@ -17,6 +21,31 @@ packages:
     from: 2.4.0
 
 targets:
+  PastureShared:
+    type: library.static
+    platform: iOS
+    sources:
+      - Sources/PastureShared
+    dependencies:
+      - sdk: MultipeerConnectivity.framework
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SKIP_INSTALL: "YES"
+
+  PastureSharedMac:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/PastureShared
+    dependencies:
+      - sdk: MultipeerConnectivity.framework
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SKIP_INSTALL: "YES"
+        PRODUCT_MODULE_NAME: PastureShared
+
   Pasture:
     type: application
     platform: iOS
@@ -27,6 +56,7 @@ targets:
         optional: true
       - path: Sources/Pasture/Fonts
         buildPhase: resources
+      - path: Sources/Pasture/PrivacyInfo.xcprivacy
     info:
       path: Sources/Pasture/Info.plist
       properties:
@@ -35,13 +65,12 @@ targets:
         NSLocalNetworkUsageDescription: "Pasture uses your local network to find and connect to your Mac running Ollama."
         NSBonjourServices:
           - _pasture._tcp
-        PastureCloudKitContainerIdentifier: ""
-        PastureMacDownloadURL: ""
-        MacCompanionDownloadURL: ""
+          - _pasture-mpc._tcp
         UIAppFonts:
           - Nunito-ExtraBold.ttf
           - Nunito-SemiBold.ttf
     dependencies:
+      - target: PastureShared
       - package: Loom
         product: Loom
       - package: Loom
@@ -79,6 +108,7 @@ targets:
     resources:
       - path: Sources/PastureHelper/Assets.xcassets
         optional: true
+      - path: Sources/PastureHelper/PrivacyInfo.xcprivacy
     info:
       path: Sources/PastureHelper/Info.plist
       properties:
@@ -87,8 +117,9 @@ targets:
         NSLocalNetworkUsageDescription: "Pasture for Mac uses your local network to connect to Pasture for iOS."
         NSBonjourServices:
           - _pasture._tcp
-        PastureCloudKitContainerIdentifier: ""
+          - _pasture-mpc._tcp
     dependencies:
+      - target: PastureSharedMac
       - package: Loom
         product: Loom
       - package: Loom
@@ -101,3 +132,4 @@ targets:
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: Sources/PastureHelper/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/PastureHelper/PastureHelper.entitlements
+        ENABLE_HARDENED_RUNTIME: "YES"

@@ -48,20 +48,6 @@ struct EnvironmentBackground: View {
                     )
                     .ignoresSafeArea()
 
-                CelestialDisc(
-                    tint: palette.celestialTint,
-                    isNight: environment.timeOfDay == .night
-                )
-                .frame(width: geometry.size.width, height: geometry.size.height)
-
-                if environment.timeOfDay != .night {
-                    AtmosphereBand(
-                        tint: palette.cloudTint,
-                        width: geometry.size.width,
-                        driftOffset: farDrift ? geometry.size.width * 0.025 : -geometry.size.width * 0.025
-                    )
-                }
-
                 HorizonLayer(
                     color: palette.farLayer,
                     yPosition: 0.60,
@@ -111,42 +97,6 @@ struct EnvironmentBackground: View {
                 nearDrift = true
             }
         }
-    }
-}
-
-private struct CelestialDisc: View {
-    let tint: Color
-    let isNight: Bool
-
-    var body: some View {
-        GeometryReader { geometry in
-            Circle()
-                .fill(tint.opacity(isNight ? 0.14 : 0.18))
-                .frame(width: geometry.size.width * 0.12)
-                .offset(
-                    x: geometry.size.width * 0.70,
-                    y: geometry.size.height * 0.18
-                )
-        }
-    }
-}
-
-private struct AtmosphereBand: View {
-    let tint: Color
-    let width: CGFloat
-    let driftOffset: CGFloat
-
-    var body: some View {
-        HStack(spacing: width * 0.06) {
-            Capsule()
-                .fill(tint.opacity(0.10))
-                .frame(width: width * 0.34, height: width * 0.052)
-
-            Capsule()
-                .fill(tint.opacity(0.08))
-                .frame(width: width * 0.24, height: width * 0.04)
-        }
-        .offset(x: driftOffset, y: -width * 0.10)
     }
 }
 

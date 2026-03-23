@@ -36,8 +36,30 @@ final class ConversationRecord {
 
     var previewText: String? {
         let sorted = sortedMessages
-        return sorted.last(where: { $0.role == "assistant" })?.content
-            ?? sorted.first(where: { $0.role == "user" })?.content
+        guard let raw = sorted.last(where: { $0.role == MessageRole.assistant.rawValue })?.content
+            ?? sorted.first(where: { $0.role == MessageRole.user.rawValue })?.content
+        else { return nil }
+        return raw.strippingMarkdown
+    }
+}
+
+extension String {
+    var strippingMarkdown: String {
+        var s = self
+        s = s.replacingOccurrences(of: "```[\\s\\S]*?```", with: "…", options: .regularExpression)
+        s = s.replacingOccurrences(of: "`[^`\n]+`", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\*\\*\\*([^*]+)\\*\\*\\*", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\*\\*([^*\n]+)\\*\\*", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\*([^*\n]+)\\*", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "__([^_\n]+)__", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "_([^_\n]+)_", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)", with: "$1", options: .regularExpression)
+        s = s.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.replacingOccurrences(of: "^#{1,6}\\s+", with: "", options: .regularExpression) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

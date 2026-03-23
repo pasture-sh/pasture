@@ -11,15 +11,16 @@ struct MenuBarPopoverView: View {
     @State private var showDiagnostics = false
     @State private var showTailscaleSetup = false
     @State private var copiedIP = false
+    @State private var copyResetTask: Task<Void, Never>?
     @StateObject private var tailscale = TailscaleMonitor()
-    private let accentColor = Color(red: 0.96, green: 0.78, blue: 0.26)
+    private let accentColor = PastureColors.accent
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 HStack {
-                    Image(systemName: "leaf.fill")
+                    Image(systemName: "sun.horizon.fill")
                         .foregroundStyle(accentColor)
                     Text("Pasture")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
@@ -127,6 +128,18 @@ struct MenuBarPopoverView: View {
                     .tint(accentColor)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
 
+                Button("Show Conversation Backups") {
+                    let folder = FileManager.default
+                        .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                        .appendingPathComponent("Pasture")
+                    if !FileManager.default.fileExists(atPath: folder.path) {
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    }
+                    NSWorkspace.shared.open(folder)
+                }
+                .foregroundStyle(.secondary)
+                .font(.system(.footnote, design: .rounded))
+
                 Button("Quit Pasture") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -137,7 +150,7 @@ struct MenuBarPopoverView: View {
             .padding()
         }
         .frame(width: 300, height: 480)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(PastureColors.popoverBackground)
         .colorScheme(.dark)
         .fontDesign(.rounded)
         .onAppear { tailscale.refresh() }
@@ -209,9 +222,11 @@ private extension MenuBarPopoverView {
 
                     Button(copiedIP ? "Copied!" : "Copy") {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(ip, forType: .string)
+                        let success = NSPasteboard.general.setString(ip, forType: .string)
+                        guard success else { return }
                         copiedIP = true
-                        Task { @MainActor in
+                        copyResetTask?.cancel()
+                        copyResetTask = Task { @MainActor in
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
                             copiedIP = false
                         }

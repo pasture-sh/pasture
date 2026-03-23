@@ -1,4 +1,5 @@
 import Foundation
+import PastureShared
 
 @MainActor
 final class ModelManagerViewModel: ObservableObject {
@@ -37,12 +38,13 @@ final class ModelManagerViewModel: ObservableObject {
         guard activeDownload == nil else { return }
         guard !isInstalled(curatedModel) else { return }
 
-        activeDownload = ModelDownloadState(
+        var state = ModelDownloadState(
             modelID: curatedModel.id,
             displayName: curatedModel.displayName,
             status: "Starting download…",
             fraction: nil
         )
+        activeDownload = state
         errorMessage = nil
 
         var didSucceed = false
@@ -50,15 +52,9 @@ final class ModelManagerViewModel: ObservableObject {
 
         do {
             for try await progress in stream {
-                activeDownload = ModelDownloadState(
-                    modelID: curatedModel.id,
-                    displayName: curatedModel.displayName,
-                    status: progress.status.capitalized,
-                    fraction: progress.total == nil ? nil : progress.fraction
-                )
-                if progress.status == "success" {
-                    didSucceed = true
-                }
+                state = state.updating(with: progress)
+                activeDownload = state
+                if progress.isComplete { didSucceed = true }
             }
         } catch {
             if error is CancellationError {
@@ -94,9 +90,3 @@ final class ModelManagerViewModel: ObservableObject {
     }
 }
 
-struct ModelDownloadState: Equatable {
-    let modelID: String
-    let displayName: String
-    let status: String
-    let fraction: Double?
-}
