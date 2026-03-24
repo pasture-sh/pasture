@@ -57,16 +57,16 @@ platform :ios do
     )
   end
 
-  desc "Submit the current version to the App Store for review"
+  desc "Submit the already-uploaded build for App Store review (metadata managed in ASC)"
   lane :release do
+    # Metadata and screenshots are managed directly in App Store Connect.
+    # This lane only submits the binary — no metadata overwrite, no screenshot upload.
     deliver(
       submit_for_review: true,
       automatic_release: false,
-      force: true,              # skip HTML report confirmation
-      skip_screenshots: false,
-      skip_metadata: false,
-      metadata_path: "./fastlane/metadata",
-      screenshots_path: "./fastlane/screenshots",
+      force: true,
+      skip_metadata: true,
+      skip_screenshots: true,
       submission_information: {
         add_id_info_uses_idfa: false
       }

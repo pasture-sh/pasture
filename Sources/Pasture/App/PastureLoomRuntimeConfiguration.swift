@@ -42,6 +42,12 @@ enum PastureLoomRuntimeConfiguration {
     }
 
     static func cloudKitConfiguration(bundle: Bundle = .main) -> LoomCloudKitConfiguration? {
+        // XCTest sets this environment variable. Without proper code signing (CODE_SIGNING_ALLOWED=NO),
+        // entitlements aren't embedded and CKContainer initialization crashes immediately.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+            return nil
+        }
+
         guard let containerIdentifier = bundle.object(
             forInfoDictionaryKey: cloudKitContainerInfoKey
         ) as? String else {

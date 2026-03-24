@@ -1150,8 +1150,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/EthanLipnik/Loom";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.5.0;
+				kind = exactVersion;
+				version = 1.5.17;
 			};
 		};
 		9277B3225DB818F9F49F4346 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
