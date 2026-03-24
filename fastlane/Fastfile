@@ -1,0 +1,120 @@
+default_platform(:ios)
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
+
+def bump_build
+  # Increment build number using the current date+run number for uniqueness.
+  # Alternatively, use: increment_build_number(build_number: latest_testflight_build_number + 1)
+  increment_build_number(
+    xcodeproj: "Pasture.xcodeproj",
+    build_number: latest_testflight_build_number(
+      app_identifier: "com.amrith.pasture"
+    ) + 1
+  )
+end
+
+# ── iOS lanes ─────────────────────────────────────────────────────────────────
+
+platform :ios do
+
+  desc "Sync code signing certificates and profiles (App Store)"
+  lane :certs do
+    match(type: "appstore", readonly: true)
+  end
+
+  desc "Build the iOS app (no upload)"
+  lane :build_ios do
+    match(type: "appstore", readonly: true)
+    gym(
+      scheme: "Pasture",
+      project: "Pasture.xcodeproj",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build/ios",
+      output_name: "Pasture.ipa",
+      clean: true
+    )
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    match(type: "appstore", readonly: true)
+    bump_build
+    gym(
+      scheme: "Pasture",
+      project: "Pasture.xcodeproj",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build/ios",
+      output_name: "Pasture.ipa",
+      clean: true
+    )
+    pilot(
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: "Latest build — see release notes."
+    )
+  end
+
+  desc "Submit the current version to the App Store for review"
+  lane :release do
+    deliver(
+      submit_for_review: true,
+      automatic_release: false,
+      force: true,              # skip HTML report confirmation
+      skip_screenshots: false,
+      skip_metadata: false,
+      metadata_path: "./fastlane/metadata",
+      screenshots_path: "./fastlane/screenshots",
+      submission_information: {
+        add_id_info_uses_idfa: false
+      }
+    )
+  end
+
+  desc "Run unit tests on simulator"
+  lane :test do
+    run_tests(
+      scheme: "PastureTests",
+      device: "iPhone 16",
+      clean: true
+    )
+  end
+
+end
+
+# ── macOS lanes ───────────────────────────────────────────────────────────────
+
+platform :mac do
+
+  desc "Sync macOS certificates and profiles"
+  lane :certs do
+    match(
+      type: "appstore",
+      platform: "macos",
+      readonly: true,
+      app_identifier: "com.amrith.pasture.helper"
+    )
+  end
+
+  desc "Build the macOS Helper app (no upload)"
+  lane :build_mac do
+    match(
+      type: "appstore",
+      platform: "macos",
+      readonly: true,
+      app_identifier: "com.amrith.pasture.helper"
+    )
+    gym(
+      scheme: "PastureHelper",
+      project: "Pasture.xcodeproj",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build/macos",
+      output_name: "PastureHelper.pkg",
+      clean: true
+    )
+  end
+
+end

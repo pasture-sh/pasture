@@ -1,6 +1,8 @@
 import Foundation
 import PastureShared
 
+// NOTE(v2): Replace this hardcoded list with a remotely-fetched config so model names,
+// sizes, and tags stay current as Ollama releases new versions.
 enum CuratedModelLibrary {
     static let recommended: [CuratedModel] = [
         CuratedModel(

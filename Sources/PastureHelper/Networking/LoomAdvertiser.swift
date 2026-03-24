@@ -253,7 +253,10 @@ final class LoomAdvertiser: ObservableObject {
         let localizedMessage = error.localizedDescription
         let combined = "\(rawMessage) \(localizedMessage)"
 
-        if combined.contains("-34018") {
+        // errSecMissingEntitlement (-34018): app lacks the keychain-access-groups entitlement.
+        // This happens in debug builds that haven't been signed with a real Apple Team.
+        let errSecMissingEntitlement = "-34018"
+        if combined.contains(errSecMissingEntitlement) {
             return "Failed to start advertiser: Keychain permission is missing for this debug build. In Xcode, open target PastureHelper -> Signing & Capabilities, select your Apple Team, then run again."
         }
 

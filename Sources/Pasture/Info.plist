@@ -27,6 +27,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pasture uses your local network to find and connect to your Mac running Ollama.</string>
+	<key>PastureCloudKitContainerIdentifier</key>
+	<string>iCloud.com.amrith.pasture</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Nunito-ExtraBold.ttf</string>

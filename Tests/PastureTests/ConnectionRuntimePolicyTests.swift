@@ -38,10 +38,10 @@ final class ConnectionRuntimePolicyTests: XCTestCase {
     }
 
     func testReconnectDelayBackoffCapsAtEightSeconds() {
-        // attempt 0 is a special case that returns 1.0 without the exponential formula
-        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 0), 1.0, accuracy: 0.001)
-        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 1), 1.0, accuracy: 0.001)
-        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 2), 2.0, accuracy: 0.001)
+        // Minimum delay is 3 s for all attempts; exponential backoff kicks in above that.
+        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 0), 3.0, accuracy: 0.001)
+        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 1), 3.0, accuracy: 0.001)
+        XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 2), 3.0, accuracy: 0.001)
         XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 3), 4.0, accuracy: 0.001)
         XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 4), 8.0, accuracy: 0.001)
         XCTAssertEqual(ConnectionRuntimePolicy.delaySeconds(forReconnectAttempt: 7), 8.0, accuracy: 0.001)

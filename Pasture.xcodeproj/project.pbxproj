@@ -54,6 +54,7 @@
 		CBDFDC5B281EE33F11EAFE53 /* LoomKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B9CDBDE3217C44B29E4877C /* LoomKit */; };
 		CDD5906AA28249E493170069 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2198395743B797A614B2C130 /* PrivacyInfo.xcprivacy */; };
 		D3F89D09C2BEECDB98CDFDC9 /* ChatIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B46DBB3F6BF212AD90ABA6 /* ChatIntent.swift */; };
+		D4A4B2A468A8C80FC0CE7CA5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEB13E7D7BA6442D0FEAFB7B /* Assets.xcassets */; };
 		D648DB60C88B5F55BD056187 /* LoomCloudKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0946FB92F558DD2072C62EA9 /* LoomCloudKit */; };
 		D74148461F89FDFE4C95F0CB /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03456A78E19B52E7543FA648 /* MenuBarPopoverView.swift */; };
 		DA88E5CDADF4F916F429B52A /* OllamaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2983559DCB7230FC3F39CEFF /* OllamaModels.swift */; };
@@ -107,7 +108,7 @@
 		1A7F2B069E1D5C35D693365F /* TailscaleMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleMonitor.swift; sourceTree = "<group>"; };
 		1B572530F1A5A85EB52D0895 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		205041588057F44EFFBD6175 /* PastureLoomRuntimeConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureLoomRuntimeConfiguration.swift; sourceTree = "<group>"; };
-		2198395743B797A614B2C130 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2198395743B797A614B2C130 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		21C58946B90164C7A2DD227B /* MPCChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPCChannel.swift; sourceTree = "<group>"; };
 		2983559DCB7230FC3F39CEFF /* OllamaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModels.swift; sourceTree = "<group>"; };
 		2AD75B2D5B5B53471691FAD9 /* Nunito-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-SemiBold.ttf"; sourceTree = "<group>"; };
@@ -128,13 +129,14 @@
 		9089F079A6419F1318796C49 /* ModelManagerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerViewModel.swift; sourceTree = "<group>"; };
 		91B8C1B7E0F2513398EF0DED /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
 		9695770AC59A3C88FFDE1FA6 /* BackupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupManager.swift; sourceTree = "<group>"; };
-		9A0B89AC9BE33C10100E3E56 /* Pasture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pasture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A0B89AC9BE33C10100E3E56 /* Pasture.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Pasture.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9A68B5D9E082AA06E78987D3 /* OnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindowController.swift; sourceTree = "<group>"; };
 		9C0E4043610363AC33E5E989 /* libPastureShared.a */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = archive.ar; path = libPastureShared.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		A521975B06927DF82F0A8005 /* PeerChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerChannel.swift; sourceTree = "<group>"; };
-		A66C365F4982CA8829FD744C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A66C365F4982CA8829FD744C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ACF69D0D0A6E6CCC30AAEA7C /* WireProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireProtocol.swift; sourceTree = "<group>"; };
 		AD1271F35FF48F43A22D3CA3 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		AEB13E7D7BA6442D0FEAFB7B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AFBD0BB0B1449EE1259CF043 /* MPCAdvertiser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPCAdvertiser.swift; sourceTree = "<group>"; };
 		C4F0019919BE8E7183981CD3 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C8982DBE6422B2C3E8C9310A /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
@@ -150,7 +152,7 @@
 		E9A3A8D0FA607878B4B705F6 /* PastureApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastureApp.swift; sourceTree = "<group>"; };
 		EE8555728FE2C7601E6BBA08 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		F480E1E44AC070102574B793 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		F9EDBC6920AF4AB499F30178 /* PastureTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PastureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F9EDBC6920AF4AB499F30178 /* PastureTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PastureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -332,6 +334,7 @@
 		7770225800A3E651E4E7340E /* PastureHelper */ = {
 			isa = PBXGroup;
 			children = (
+				AEB13E7D7BA6442D0FEAFB7B /* Assets.xcassets */,
 				D52B3CFB405531EC5E167D7C /* Info.plist */,
 				E3334C354D7FCC97A3F6C15C /* PastureColors.swift */,
 				0BD1E31F210CC5D0D6672572 /* PastureHelper.entitlements */,
@@ -587,6 +590,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = 03EF7CA9C0DE71F30FBC83E1 /* Build configuration list for PBXProject "Pasture" */;
 			developmentRegion = en;
@@ -631,6 +636,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D4A4B2A468A8C80FC0CE7CA5 /* Assets.xcassets in Resources */,
 				FBD320E323794F28B3B37B5E /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -781,7 +787,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -817,7 +822,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -909,10 +913,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -924,7 +925,6 @@
 					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.amrith.pasture.helper;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -1014,7 +1014,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1033,10 +1032,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1048,7 +1044,6 @@
 					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.amrith.pasture.helper;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -1075,7 +1070,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

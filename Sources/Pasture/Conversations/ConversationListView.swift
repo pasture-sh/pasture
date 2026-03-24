@@ -269,6 +269,7 @@ struct ConversationListView: View {
         } else {
             environment = ModelEnvironment.chat(for: modelName)
         }
+        guard environment != listEnvironment else { return }
         withAnimation(.easeInOut(duration: 0.6)) {
             listEnvironment = environment
         }

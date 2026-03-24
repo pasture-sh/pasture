@@ -69,6 +69,7 @@ targets:
         UIAppFonts:
           - Nunito-ExtraBold.ttf
           - Nunito-SemiBold.ttf
+        PastureCloudKitContainerIdentifier: iCloud.com.amrith.pasture
     dependencies:
       - target: PastureShared
       - package: Loom
@@ -118,6 +119,7 @@ targets:
         NSBonjourServices:
           - _pasture._tcp
           - _pasture-mpc._tcp
+        PastureCloudKitContainerIdentifier: iCloud.com.amrith.pasture
     dependencies:
       - target: PastureSharedMac
       - package: Loom
@@ -133,3 +135,4 @@ targets:
         INFOPLIST_FILE: Sources/PastureHelper/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/PastureHelper/PastureHelper.entitlements
         ENABLE_HARDENED_RUNTIME: "YES"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

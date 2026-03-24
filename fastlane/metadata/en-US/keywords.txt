@@ -1,0 +1,1 @@
+ollama,AI chat,local AI,private AI,LLM,llama,mistral,on-device AI,no cloud,offline AI

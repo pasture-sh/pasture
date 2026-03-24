@@ -1,10 +1,13 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import os.log
 import PastureShared
 #if os(iOS)
 import UIKit
 #endif
+
+private let log = Logger(subsystem: "com.amrith.pasture", category: "ChatViewModel")
 
 @MainActor
 final class ChatViewModel: ObservableObject {
@@ -342,7 +345,7 @@ final class ChatViewModel: ObservableObject {
         do {
             try modelContext.save()
         } catch {
-            assertionFailure("[ChatViewModel] Failed to save after appending message: \(error)")
+            log.error("[ChatViewModel] Failed to save after appending message: \(error)")
         }
     }
 
@@ -351,7 +354,7 @@ final class ChatViewModel: ObservableObject {
         do {
             try modelContext.save()
         } catch {
-            assertionFailure("[ChatViewModel] Failed to save conversation meta: \(error)")
+            log.error("[ChatViewModel] Failed to save conversation meta: \(error)")
         }
     }
 

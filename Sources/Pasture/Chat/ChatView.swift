@@ -931,9 +931,10 @@ struct ChatSettingsView: View {
 
 private struct SystemPromptEditorView: View {
     let modelName: String
-    @EnvironmentObject var viewModel: ChatViewModel
     @State private var text: String = ""
     @Environment(\.dismiss) private var dismiss
+
+    private static let defaultsKey = "pasture.chat.systemPrompts"
 
     var body: some View {
         TextEditor(text: $text)
@@ -944,12 +945,23 @@ private struct SystemPromptEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
-                        viewModel.setSystemPrompt(text, for: modelName)
-                        dismiss()
+                        save()
                     }
                 }
             }
-            .onAppear { text = viewModel.systemPrompt(for: modelName) }
+            .onAppear { load() }
+    }
+
+    private func load() {
+        let dict = UserDefaults.standard.dictionary(forKey: Self.defaultsKey) as? [String: String]
+        text = dict?[modelName] ?? ""
+    }
+
+    private func save() {
+        var dict = (UserDefaults.standard.dictionary(forKey: Self.defaultsKey) as? [String: String]) ?? [:]
+        dict[modelName] = text.isEmpty ? nil : text
+        UserDefaults.standard.set(dict, forKey: Self.defaultsKey)
+        dismiss()
     }
 }
 

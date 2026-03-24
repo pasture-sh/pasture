@@ -84,7 +84,13 @@ enum ModelComplexity: String, Equatable {
         return .medium
     }
 
-    private static let paramBillionsRegex = try! NSRegularExpression(pattern: "(\\d+)\\s*b", options: [.caseInsensitive])
+    // Static pattern — safe to force-compile once; a panic here is a programmer error, not a runtime condition.
+    private static let paramBillionsRegex: NSRegularExpression = {
+        guard let regex = try? NSRegularExpression(pattern: "(\\d+)\\s*b", options: [.caseInsensitive]) else {
+            fatalError("ModelComplexity: invalid regex pattern — this is a programming error")
+        }
+        return regex
+    }()
 
     private static func extractParameterBillions(from modelName: String) -> Int? {
         let regex = paramBillionsRegex

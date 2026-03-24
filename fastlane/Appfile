@@ -1,0 +1,6 @@
+app_identifier "com.amrith.pasture"         # iOS bundle ID
+apple_id "amrith.shanbhag@gmail.com"        # Apple Developer account
+
+# App Store Connect Team ID (find at appstoreconnect.apple.com under your profile)
+# team_id "YOUR_TEAM_ID"
+# itc_team_id "YOUR_ITC_TEAM_ID"

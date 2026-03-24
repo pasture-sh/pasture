@@ -73,6 +73,7 @@ struct RootView: View {
                 connectionState: connection.state,
                 onGetStarted: {
                     onboardingStep = .installHelper
+                    Task { await connection.startDiscovery() }
                 },
                 onContinueToPairing: {
                     onboardingStep = .waiting
@@ -81,10 +82,9 @@ struct RootView: View {
                     Task { await connection.startDiscovery() }
                 }
             )
-            .task {
-                if onboardingStep == .waiting {
-                    await connection.startDiscovery()
-                }
+            .onChange(of: onboardingStep) { _, step in
+                guard step == .waiting else { return }
+                Task { await connection.startDiscovery() }
             }
         }
     }
@@ -147,7 +147,6 @@ private struct OnboardingFlowView: View {
             }
         }
         .fontDesign(.rounded)
-        .task { await connection.startDiscovery() }
     }
 }
 

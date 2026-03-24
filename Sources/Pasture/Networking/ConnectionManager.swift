@@ -138,17 +138,25 @@ final class ConnectionManager: ObservableObject {
 
         // Count loops without a Loom peer. After ~3 s (5 × ~600 ms), try MPC fallback.
         var loomTimeoutLoops = 0
+        // Require the target to be visible for 3 consecutive loops (~1.6 s) before connecting.
+        // Bonjour can advertise a peer before its TCP endpoint is connectable (e.g. right after
+        // PastureHelper restarts), causing an immediate "could not resolve peer" failure.
+        var peerStableLoops = 0
 
         while !Task.isCancelled {
             syncPeersFromContext(source: "discovery-loop")
 
             // Prefer Loom (Bonjour + Tailscale + CloudKit trust).
             if let target = autoConnectTarget(from: availableHelpers) {
-                await connect(to: .loom(target))
-                return
+                peerStableLoops += 1
+                if peerStableLoops >= 3 {
+                    await connect(to: .loom(target))
+                    return
+                }
+            } else {
+                peerStableLoops = 0
+                loomTimeoutLoops += 1
             }
-
-            loomTimeoutLoops += 1
 
             // Fall back to MPC after 5 loops without a Loom peer.
             if loomTimeoutLoops >= 5, let mpcPeer = mpcBrowser.discoveredPeers.first {
@@ -158,7 +166,7 @@ final class ConnectionManager: ObservableObject {
             }
 
             await refreshAndSyncPeers(source: "discovery-loop")
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            try? await Task.sleep(nanoseconds: 550_000_000)
         }
     }
 
@@ -333,14 +341,16 @@ final class ConnectionManager: ObservableObject {
         }
     }
 
+    private func isLoomConnectionLive(id: UUID) -> Bool {
+        let state = loomContext.connections.first(where: { $0.id == id })?.state
+        return state != nil && state != .disconnected && state != .failed
+    }
+
     private func checkConnectionHealth(expectedConnectionID: UUID, transportType: PeerTransportType) async {
         guard isConnected else { return }
-        if transportType == .loom {
-            let loomState = loomContext.connections.first(where: { $0.id == expectedConnectionID })?.state
-            if loomState == nil || loomState == .disconnected || loomState == .failed {
-                recordEvent("Keepalive: Loom connection gone — triggering reconnect.")
-                await connectionDidEnd(expectedConnectionID: expectedConnectionID)
-            }
+        if transportType == .loom, !isLoomConnectionLive(id: expectedConnectionID) {
+            recordEvent("Keepalive: Loom connection gone — triggering reconnect.")
+            await connectionDidEnd(expectedConnectionID: expectedConnectionID)
         }
         // MPC self-reports via its event stream; no proactive check needed.
     }
@@ -434,13 +444,9 @@ final class ConnectionManager: ObservableObject {
             startPeerRefreshLoopIfNeeded()
 
             // For Loom connections, check whether Loom still considers this connection live.
-            if let conn = connection, conn.transportType == .loom {
-                let connID = conn.id
-                let loomState = loomContext.connections.first(where: { $0.id == connID })?.state
-                if loomState == nil || loomState == .disconnected || loomState == .failed {
-                    await connectionDidEnd(expectedConnectionID: connID)
-                    return
-                }
+            if let conn = connection, conn.transportType == .loom, !isLoomConnectionLive(id: conn.id) {
+                await connectionDidEnd(expectedConnectionID: conn.id)
+                return
             }
             // MPC connections self-report disconnection via their events stream — no extra check needed.
 
@@ -455,6 +461,9 @@ final class ConnectionManager: ObservableObject {
         // Don't interrupt an in-progress connect attempt.
         if case .connecting = state { return }
 
+        // Cancel any pending reconnect timer so it doesn't race the foreground-initiated restart.
+        reconnectTask?.cancel()
+        reconnectTask = nil
         // Discovering, stalled, failed, or reconnect-exhausted — cancel any suspended tasks and restart.
         discoveryTask?.cancel()
         discoveryTask = nil
@@ -769,9 +778,9 @@ final class ConnectionManager: ObservableObject {
         let shouldReconnect: Bool
         switch channel.transportType {
         case .loom:
-            // Loom signals a closed socket with NWError code 57.
+            // Loom surfaces a closed socket as NWError ENOTCONN (code 57 / posix 57).
             let nsError = error as NSError
-            shouldReconnect = nsError.domain == "Network.NWError" && nsError.code == 57
+            shouldReconnect = nsError.domain == "Network.NWError" && nsError.code == ENOTCONN
         case .mpc:
             // Any MPC send failure indicates the session is gone.
             shouldReconnect = true
@@ -945,7 +954,9 @@ enum ConnectionRuntimePolicy {
     }
 
     static func delaySeconds(forReconnectAttempt attempt: Int) -> Double {
-        guard attempt > 0 else { return 1.0 }
-        return min(8.0, pow(2.0, Double(attempt - 1)))
+        guard attempt > 0 else { return 3.0 }
+        // Minimum 3 s — fast retries below that hit Bonjour-advertised peers whose TCP
+        // endpoint isn't connectable yet, causing repeated "could not resolve peer" failures.
+        return min(8.0, max(3.0, pow(2.0, Double(attempt - 1))))
     }
 }
