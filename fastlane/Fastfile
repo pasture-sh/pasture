@@ -166,9 +166,9 @@ platform :mac do
         signingCertificate: "Developer ID Application",
         provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
       }
-      build_app_options[:xcargs] = "DEVELOPMENT_TEAM=VRNNS4H6XH CODE_SIGN_STYLE=Manual " \
-        "CODE_SIGN_IDENTITY='Developer ID Application' " \
-        "PROVISIONING_PROFILE_SPECIFIER='#{profile_name}'"
+      # Automatic signing for archive so SPM targets aren't affected;
+      # export_options above handles manual signing with the profile at export time.
+      build_app_options[:xcargs] = "CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=VRNNS4H6XH"
     end
 
     build_app(build_app_options)
