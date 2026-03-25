@@ -133,4 +133,47 @@ platform :mac do
     )
   end
 
+  desc "Build, notarize, and package PastureHelper as a DMG for direct distribution (pasture.sh)"
+  lane :mac_dmg do
+    api_key = asc_api_key
+
+    match(
+      type: "developer_id",
+      platform: "macos",
+      app_identifier: "com.amrith.pasture.helper",
+      readonly: true,
+      api_key: api_key
+    )
+
+    build_app(
+      scheme: "PastureHelper",
+      project: "Pasture.xcodeproj",
+      configuration: "Release",
+      export_method: "developer-id",
+      output_directory: "./build/macos",
+      output_name: "PastureHelper",
+      clean: true
+    )
+
+    notarize(
+      package: "./build/macos/PastureHelper.app",
+      bundle_id: "com.amrith.pasture.helper",
+      api_key: api_key
+    )
+
+    sh(
+      "create-dmg",
+      "--volname",        "Pasture for Mac",
+      "--volicon",        "#{Dir.pwd}/app-icon.png",
+      "--window-size",    "660", "400",
+      "--icon",           "PastureHelper.app", "170", "185",
+      "--app-drop-link",  "490", "185",
+      "--hide-extension", "PastureHelper.app",
+      "#{Dir.pwd}/build/macos/PastureHelper.dmg",
+      "#{Dir.pwd}/build/macos/PastureHelper.app"
+    )
+
+    UI.success("DMG ready at ./build/macos/PastureHelper.dmg")
+  end
+
 end

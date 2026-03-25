@@ -1,0 +1,47 @@
+name: Release macOS DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          best_path=$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -1)
+          sudo xcode-select -s "${best_path}/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: |
+          brew install xcodegen create-dmg
+          xcodegen generate
+
+      - name: Write ASC API Key
+        run: echo "$FASTLANE_ASC_KEY_B64" | base64 --decode > /tmp/asc-key.p8
+        env:
+          FASTLANE_ASC_KEY_B64: ${{ secrets.FASTLANE_ASC_KEY_B64 }}
+
+      - name: Build, notarize, and package DMG
+        run: fastlane mac mac_dmg
+        env:
+          MATCH_PASSWORD:         ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_ASC_KEY_ID:    ${{ secrets.FASTLANE_ASC_KEY_ID }}
+          FASTLANE_ASC_ISSUER_ID: ${{ secrets.FASTLANE_ASC_ISSUER_ID }}
+          FASTLANE_ASC_KEY_PATH:  /tmp/asc-key.p8
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "./build/macos/PastureHelper.dmg#Pasture for Mac.dmg" \
+            --title "Pasture for Mac $GITHUB_REF_NAME" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
