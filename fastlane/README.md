@@ -76,6 +76,14 @@ Sync macOS certificates and profiles
 
 Build the macOS Helper app (no upload)
 
+### mac mac_dmg
+
+```sh
+[bundle exec] fastlane mac mac_dmg
+```
+
+Build, notarize, and package PastureHelper as a DMG for direct distribution (pasture.sh)
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

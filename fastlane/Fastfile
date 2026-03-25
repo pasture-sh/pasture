@@ -136,6 +136,7 @@ platform :mac do
   desc "Build, notarize, and package PastureHelper as a DMG for direct distribution (pasture.sh)"
   lane :mac_dmg do
     api_key = asc_api_key
+    root = File.expand_path("..", __dir__)
 
     match(
       type: "developer_id",
@@ -150,32 +151,42 @@ platform :mac do
       project: "Pasture.xcodeproj",
       configuration: "Release",
       export_method: "developer-id",
-      output_directory: "./build/macos",
+      output_directory: "#{root}/build/macos",
       output_name: "PastureHelper",
       clean: true
     )
 
     notarize(
-      package: "./build/macos/PastureHelper.app",
+      package: "#{root}/build/macos/PastureHelper.app",
       bundle_id: "com.amrith.pasture.helper",
       api_key: api_key
     )
 
+    FileUtils.rm_f("#{root}/build/macos/PastureHelper.dmg")
+
     sh(
       "create-dmg",
       "--volname",        "Pasture for Mac",
-      "--volicon",        "#{Dir.pwd}/app-icon.png",
-      "--background",     "#{Dir.pwd}/Assets/dmg-background.png",
+      "--volicon",        "#{root}/Assets/app-icon.icns",
+      "--background",     "#{root}/Assets/dmg-background-dmg.png",
       "--window-size",    "660", "400",
       "--icon-size",      "100",
       "--icon",           "PastureHelper.app", "170", "200",
       "--app-drop-link",  "490", "200",
       "--hide-extension", "PastureHelper.app",
-      "#{Dir.pwd}/build/macos/PastureHelper.dmg",
-      "#{Dir.pwd}/build/macos/PastureHelper.app"
+      "#{root}/build/macos/PastureHelper.dmg",
+      "#{root}/build/macos/PastureHelper.app"
     )
 
-    UI.success("DMG ready at ./build/macos/PastureHelper.dmg")
+    # Set the custom Pasture icon on the DMG file itself
+    sh(
+      "osascript", "-e",
+      "use framework \"AppKit\"\n" \
+      "set img to current application's NSImage's alloc()'s initWithContentsOfFile:\"#{root}/Assets/app-icon.icns\"\n" \
+      "current application's NSWorkspace's sharedWorkspace()'s setIcon:img forFile:\"#{root}/build/macos/PastureHelper.dmg\" options:0"
+    )
+
+    UI.success("DMG ready at #{root}/build/macos/PastureHelper.dmg")
   end
 
 end
