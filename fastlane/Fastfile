@@ -138,15 +138,7 @@ platform :mac do
     api_key = asc_api_key
     root = File.expand_path("..", __dir__)
 
-    if ENV["SKIP_MATCH"] == "true"
-      sigh(
-        app_identifier: "com.amrith.pasture.helper",
-        platform: "macos",
-        api_key: api_key,
-        developer_id: true,
-        readonly: true
-      )
-    else
+    unless ENV["SKIP_MATCH"] == "true"
       match(
         type: "developer_id",
         platform: "macos",
@@ -154,6 +146,16 @@ platform :mac do
         readonly: true,
         api_key: api_key
       )
+    end
+
+    ci_xcargs = if ENV["SKIP_MATCH"] == "true"
+      "-allowProvisioningUpdates " \
+      "-authenticationKeyPath #{ENV['FASTLANE_ASC_KEY_PATH']} " \
+      "-authenticationKeyID #{ENV['FASTLANE_ASC_KEY_ID']} " \
+      "-authenticationKeyIssuerID #{ENV['FASTLANE_ASC_ISSUER_ID']} " \
+      "DEVELOPMENT_TEAM=VRNNS4H6XH"
+    else
+      ""
     end
 
     build_app(
@@ -164,7 +166,7 @@ platform :mac do
       output_directory: "#{root}/build/macos",
       output_name: "PastureHelper",
       clean: true,
-      xcargs: "CODE_SIGN_IDENTITY='Developer ID Application' CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=VRNNS4H6XH"
+      xcargs: ci_xcargs
     )
 
     notarize(
