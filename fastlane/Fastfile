@@ -165,9 +165,11 @@ platform :mac do
       "create-dmg",
       "--volname",        "Pasture for Mac",
       "--volicon",        "#{Dir.pwd}/app-icon.png",
+      "--background",     "#{Dir.pwd}/Assets/dmg-background.png",
       "--window-size",    "660", "400",
-      "--icon",           "PastureHelper.app", "170", "185",
-      "--app-drop-link",  "490", "185",
+      "--icon-size",      "100",
+      "--icon",           "PastureHelper.app", "170", "200",
+      "--app-drop-link",  "490", "200",
       "--hide-extension", "PastureHelper.app",
       "#{Dir.pwd}/build/macos/PastureHelper.dmg",
       "#{Dir.pwd}/build/macos/PastureHelper.app"
