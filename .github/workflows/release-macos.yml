@@ -32,10 +32,11 @@ jobs:
       - name: Build, notarize, and package DMG
         run: fastlane mac mac_dmg
         env:
-          MATCH_PASSWORD:         ${{ secrets.MATCH_PASSWORD }}
-          FASTLANE_ASC_KEY_ID:    ${{ secrets.FASTLANE_ASC_KEY_ID }}
-          FASTLANE_ASC_ISSUER_ID: ${{ secrets.FASTLANE_ASC_ISSUER_ID }}
-          FASTLANE_ASC_KEY_PATH:  /tmp/asc-key.p8
+          MATCH_PASSWORD:                ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          FASTLANE_ASC_KEY_ID:           ${{ secrets.FASTLANE_ASC_KEY_ID }}
+          FASTLANE_ASC_ISSUER_ID:        ${{ secrets.FASTLANE_ASC_ISSUER_ID }}
+          FASTLANE_ASC_KEY_PATH:         /tmp/asc-key.p8
 
       - name: Create GitHub Release
         run: |
