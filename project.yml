@@ -88,6 +88,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: Sources/Pasture/Pasture.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_TEAM: VRNNS4H6XH
 
   PastureTests:
     type: bundle.unit-test
@@ -136,3 +137,4 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/PastureHelper/PastureHelper.entitlements
         ENABLE_HARDENED_RUNTIME: "YES"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_TEAM: VRNNS4H6XH

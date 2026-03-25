@@ -1,7 +1,7 @@
 # match stores encrypted certificates and provisioning profiles in a Git repo.
 # Run `fastlane match init` to configure, then `fastlane match appstore` to create/sync.
 
-# git_url "https://github.com/YOUR_ORG/pasture-certificates.git"
+git_url "https://github.com/pasture-sh/pasture-certs.git"
 storage_mode "git"
 
 type "appstore"     # default type; override per lane with `match(type: "development")`

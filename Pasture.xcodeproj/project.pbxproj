@@ -591,6 +591,12 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					0EAA70D4BAACDC1EB928DAFC = {
+						DevelopmentTeam = VRNNS4H6XH;
+					};
+					154DAE82DA8F0086EF9A42AD = {
+						DevelopmentTeam = VRNNS4H6XH;
+					};
 				};
 			};
 			buildConfigurationList = 03EF7CA9C0DE71F30FBC83E1 /* Build configuration list for PBXProject "Pasture" */;
@@ -787,6 +793,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -914,6 +921,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1033,6 +1041,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/PastureHelper/PastureHelper.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Sources/PastureHelper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1070,6 +1079,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Pasture/Pasture.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = VRNNS4H6XH;
 				INFOPLIST_FILE = Sources/Pasture/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
