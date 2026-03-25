@@ -155,7 +155,8 @@ platform :mac do
       export_method: "developer-id",
       output_directory: "#{root}/build/macos",
       output_name: "PastureHelper",
-      clean: true
+      clean: true,
+      xcargs: "PROVISIONING_PROFILE_SPECIFIER='' CODE_SIGN_IDENTITY='Developer ID Application' CODE_SIGN_STYLE=Manual"
     )
 
     notarize(
