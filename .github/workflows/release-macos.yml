@@ -42,13 +42,55 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "ci" build.keychain
           security list-keychains -s build.keychain login.keychain
 
+      - name: Download provisioning profile from ASC
+        env:
+          FASTLANE_ASC_KEY_ID:    ${{ secrets.FASTLANE_ASC_KEY_ID }}
+          FASTLANE_ASC_ISSUER_ID: ${{ secrets.FASTLANE_ASC_ISSUER_ID }}
+        run: |
+          ruby - <<'RUBY'
+          require 'openssl'; require 'base64'; require 'json'
+          require 'net/http'; require 'uri'; require 'fileutils'
+
+          key_id    = ENV['FASTLANE_ASC_KEY_ID']
+          issuer_id = ENV['FASTLANE_ASC_ISSUER_ID']
+          key       = OpenSSL::PKey::EC.new(File.read('/tmp/asc-key.p8'))
+          now       = Time.now.to_i
+          b64url    = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+          hdr       = b64url.call({ alg: 'ES256', kid: key_id, typ: 'JWT' }.to_json)
+          pay       = b64url.call({ iss: issuer_id, exp: now + 1200, aud: 'appstoreconnect-v1' }.to_json)
+          sig_input = "#{hdr}.#{pay}"
+          asn1_sig  = key.dsa_sign_asn1(OpenSSL::Digest::SHA256.digest(sig_input))
+          seq       = OpenSSL::ASN1.decode(asn1_sig).value
+          raw_sig   = [seq[0].value, seq[1].value].map { |n|
+            n.to_s(2).bytes.drop_while { |b| b == 0 }.pack('C*').rjust(32, "\x00")
+          }.join
+          token = "#{sig_input}.#{b64url.call(raw_sig)}"
+
+          uri = URI('https://api.appstoreconnect.apple.com/v1/profiles?filter[profileType]=MAC_APP_DIRECT&limit=50')
+          req = Net::HTTP::Get.new(uri, 'Authorization' => "Bearer #{token}")
+          res = Net::HTTP.start(uri.host, 443, use_ssl: true) { |h| h.request(req) }
+          profiles = JSON.parse(res.body)['data'] || []
+          profile  = profiles.find { |p| p['attributes']['bundleId']['id'] rescue
+                       p['attributes']['name'].include?('pasture.helper') }
+          abort "No Developer ID profile found for com.amrith.pasture.helper" unless profile
+
+          content = Base64.decode64(profile['attributes']['profileContent'])
+          uuid    = profile['attributes']['uuid']
+          dir     = File.expand_path('~/Library/MobileDevice/Provisioning Profiles')
+          FileUtils.mkdir_p(dir)
+          path = "#{dir}/#{uuid}.provisionprofile"
+          File.binwrite(path, content)
+          File.write('/tmp/profile_name.txt', profile['attributes']['name'])
+          puts "Installed profile: #{profile['attributes']['name']} (#{path})"
+          RUBY
+
       - name: Build, notarize, and package DMG
         run: fastlane mac mac_dmg
         env:
-          SKIP_MATCH:            "true"
-          FASTLANE_ASC_KEY_ID:   ${{ secrets.FASTLANE_ASC_KEY_ID }}
+          SKIP_MATCH:             "true"
+          FASTLANE_ASC_KEY_ID:    ${{ secrets.FASTLANE_ASC_KEY_ID }}
           FASTLANE_ASC_ISSUER_ID: ${{ secrets.FASTLANE_ASC_ISSUER_ID }}
-          FASTLANE_ASC_KEY_PATH: /tmp/asc-key.p8
+          FASTLANE_ASC_KEY_PATH:  /tmp/asc-key.p8
 
       - name: Create GitHub Release
         run: |

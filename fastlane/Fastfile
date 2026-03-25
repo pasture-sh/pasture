@@ -148,26 +148,30 @@ platform :mac do
       )
     end
 
-    ci_xcargs = if ENV["SKIP_MATCH"] == "true"
-      "-allowProvisioningUpdates " \
-      "-authenticationKeyPath #{ENV['FASTLANE_ASC_KEY_PATH']} " \
-      "-authenticationKeyID #{ENV['FASTLANE_ASC_KEY_ID']} " \
-      "-authenticationKeyIssuerID #{ENV['FASTLANE_ASC_ISSUER_ID']} " \
-      "DEVELOPMENT_TEAM=VRNNS4H6XH"
-    else
-      ""
-    end
-
-    build_app(
+    build_app_options = {
       scheme: "PastureHelper",
       project: "Pasture.xcodeproj",
       configuration: "Release",
       export_method: "developer-id",
       output_directory: "#{root}/build/macos",
       output_name: "PastureHelper",
-      clean: true,
-      xcargs: ci_xcargs
-    )
+      clean: true
+    }
+
+    if ENV["SKIP_MATCH"] == "true"
+      profile_name = File.read("/tmp/profile_name.txt").strip
+      build_app_options[:export_options] = {
+        method: "developer-id",
+        signingStyle: "manual",
+        signingCertificate: "Developer ID Application",
+        provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
+      }
+      build_app_options[:xcargs] = "DEVELOPMENT_TEAM=VRNNS4H6XH CODE_SIGN_STYLE=Manual " \
+        "CODE_SIGN_IDENTITY='Developer ID Application' " \
+        "PROVISIONING_PROFILE_SPECIFIER='#{profile_name}'"
+    end
+
+    build_app(build_app_options)
 
     notarize(
       package: "#{root}/build/macos/PastureHelper.app",
