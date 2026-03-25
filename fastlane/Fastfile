@@ -159,16 +159,23 @@ platform :mac do
     }
 
     if ENV["SKIP_MATCH"] == "true"
-      profile_name = File.read("/tmp/profile_name.txt").strip
+      # Automatic signing + -allowProvisioningUpdates lets Xcode download the correct
+      # profile per bundle ID via the ASC API key. It skips SPM targets that have no
+      # bundle ID, avoiding the "does not support provisioning profiles" error that
+      # manual signingStyle causes when a profile is stamped on every target.
       build_app_options[:export_options] = {
         method: "developer-id",
-        signingStyle: "manual",
-        signingCertificate: "Developer ID Application",
-        provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
+        signingStyle: "automatic",
+        teamID: "VRNNS4H6XH"
       }
-      # Automatic signing for archive so SPM targets aren't affected;
-      # export_options above handles manual signing with the profile at export time.
-      build_app_options[:xcargs] = "CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=VRNNS4H6XH"
+      build_app_options[:xcargs] = [
+        "CODE_SIGN_STYLE=Automatic",
+        "DEVELOPMENT_TEAM=VRNNS4H6XH",
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath #{ENV['FASTLANE_ASC_KEY_PATH']}",
+        "-authenticationKeyID #{ENV['FASTLANE_ASC_KEY_ID']}",
+        "-authenticationKeyIssuerID #{ENV['FASTLANE_ASC_ISSUER_ID']}"
+      ].join(" ")
     end
 
     build_app(build_app_options)
