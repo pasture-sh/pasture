@@ -138,7 +138,15 @@ platform :mac do
     api_key = asc_api_key
     root = File.expand_path("..", __dir__)
 
-    unless ENV["SKIP_MATCH"] == "true"
+    if ENV["SKIP_MATCH"] == "true"
+      sigh(
+        app_identifier: "com.amrith.pasture.helper",
+        platform: "macos",
+        api_key: api_key,
+        developer_id: true,
+        readonly: true
+      )
+    else
       match(
         type: "developer_id",
         platform: "macos",
@@ -156,7 +164,7 @@ platform :mac do
       output_directory: "#{root}/build/macos",
       output_name: "PastureHelper",
       clean: true,
-      xcargs: "PROVISIONING_PROFILE_SPECIFIER='' CODE_SIGN_IDENTITY='Developer ID Application' CODE_SIGN_STYLE=Manual"
+      xcargs: "CODE_SIGN_IDENTITY='Developer ID Application' CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=VRNNS4H6XH"
     )
 
     notarize(
