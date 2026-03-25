@@ -159,14 +159,18 @@ platform :mac do
     }
 
     if ENV["SKIP_MATCH"] == "true"
-      # Automatic signing + -allowProvisioningUpdates lets Xcode download the correct
-      # profile per bundle ID via the ASC API key. It skips SPM targets that have no
-      # bundle ID, avoiding the "does not support provisioning profiles" error that
-      # manual signingStyle causes when a profile is stamped on every target.
+      profile_name = File.read("/tmp/profile_name.txt").strip
+      # Archive uses automatic signing + -allowProvisioningUpdates so Xcode manages
+      # profiles per bundle ID and skips SPM targets that have no bundle ID.
+      # Export uses manual signing: signingStyle "automatic" in Xcode 26 triggers
+      # "Cloud Signing" which requires a logged-in Xcode account unavailable in CI.
+      # The provisioningProfiles dict is bundle-ID keyed so SPM resource bundles
+      # (which have no matching bundle ID) are not affected.
       build_app_options[:export_options] = {
         method: "developer-id",
-        signingStyle: "automatic",
-        teamID: "VRNNS4H6XH"
+        signingStyle: "manual",
+        signingCertificate: "Developer ID Application",
+        provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
       }
       build_app_options[:xcargs] = [
         "CODE_SIGN_STYLE=Automatic",
