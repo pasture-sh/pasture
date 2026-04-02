@@ -172,13 +172,15 @@ platform :mac do
         signingCertificate: "Developer ID Application",
         provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
       }
+      # Manual signing for archive: the provisioning profile is pre-installed by CI.
+      # Automatic signing + -allowProvisioningUpdates hangs indefinitely on Sparkle's
+      # embedded XPC services (Installer.xpc, Downloader.xpc) whose bundle IDs aren't
+      # registered under our team and can't be auto-provisioned.
       build_app_options[:xcargs] = [
-        "CODE_SIGN_STYLE=Automatic",
+        "CODE_SIGN_STYLE=Manual",
         "DEVELOPMENT_TEAM=VRNNS4H6XH",
-        "-allowProvisioningUpdates",
-        "-authenticationKeyPath #{ENV['FASTLANE_ASC_KEY_PATH']}",
-        "-authenticationKeyID #{ENV['FASTLANE_ASC_KEY_ID']}",
-        "-authenticationKeyIssuerID #{ENV['FASTLANE_ASC_ISSUER_ID']}"
+        "CODE_SIGN_IDENTITY=Developer ID Application",
+        "PROVISIONING_PROFILE_SPECIFIER=#{profile_name}"
       ].join(" ")
     end
 
