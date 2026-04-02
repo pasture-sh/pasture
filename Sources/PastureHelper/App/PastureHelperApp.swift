@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import LoomKit
+import Sparkle
 
 @main
 struct PastureHelperApp: App {
@@ -30,9 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private let onboardingController = OnboardingWindowController()
     private var wakeObserver: NSObjectProtocol?
+    let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBarController = MenuBarController(loomContext: loomContainer.mainContext)
+        menuBarController = MenuBarController(loomContext: loomContainer.mainContext, updater: updaterController.updater)
         onboardingController.showIfNeeded()
 
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(

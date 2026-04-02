@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import LoomKit
+import Sparkle
 import Combine
 
 @MainActor
@@ -12,7 +13,7 @@ final class MenuBarController {
     private let modelManagerWindowController = ModelManagerWindowController()
     private var cancellables: Set<AnyCancellable> = []
 
-    init(loomContext: LoomContext) {
+    init(loomContext: LoomContext, updater: SPUUpdater) {
         advertiser = LoomAdvertiser(loomContext: loomContext)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         popover = NSPopover()
@@ -27,6 +28,7 @@ final class MenuBarController {
         let contentView = MenuBarPopoverView(
             advertiser: advertiser,
             launchAtLoginManager: launchAtLoginManager,
+            updater: updater,
             onSetAdvertisingPaused: { [weak self] paused in
                 Task { await self?.advertiser.setPaused(paused) }
             },

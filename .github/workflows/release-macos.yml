@@ -102,3 +102,42 @@ jobs:
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_SIGNING_KEY: ${{ secrets.SPARKLE_SIGNING_KEY }}
+        run: |
+          # Find Sparkle's generate_appcast tool from the SPM build
+          GENERATE_APPCAST=$(find ~/Library/Developer/Xcode/DerivedData -name "generate_appcast" -type f 2>/dev/null | head -1)
+          if [ -z "$GENERATE_APPCAST" ]; then
+            echo "generate_appcast not found in DerivedData, downloading Sparkle tools..."
+            curl -sL "https://github.com/sparkle-project/Sparkle/releases/latest/download/Sparkle-2.8.0.tar.xz" | tar xJ -C /tmp
+            GENERATE_APPCAST="/tmp/bin/generate_appcast"
+          fi
+
+          mkdir -p /tmp/sparkle-releases
+          cp ./build/macos/PastureHelper.dmg /tmp/sparkle-releases/
+
+          # generate_appcast reads SPARKLE_SIGNING_KEY from env for EdDSA signing
+          "$GENERATE_APPCAST" /tmp/sparkle-releases
+
+          cp /tmp/sparkle-releases/appcast.xml ./build/macos/appcast.xml
+          echo "Appcast generated:"
+          cat ./build/macos/appcast.xml
+
+      - name: Deploy appcast to GitHub Pages
+        run: |
+          git clone https://x-access-token:${GH_TOKEN}@github.com/pasture-sh/pasture-sh.github.io.git /tmp/pages
+          cp ./build/macos/appcast.xml /tmp/pages/appcast.xml
+          cd /tmp/pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          if git diff --cached --quiet; then
+            echo "No appcast changes to commit."
+          else
+            git commit -m "Update appcast.xml for $GITHUB_REF_NAME"
+            git push
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

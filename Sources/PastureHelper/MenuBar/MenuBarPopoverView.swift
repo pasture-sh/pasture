@@ -1,9 +1,11 @@
 import Foundation
 import SwiftUI
+import Sparkle
 
 struct MenuBarPopoverView: View {
     @ObservedObject var advertiser: LoomAdvertiser
     @ObservedObject var launchAtLoginManager: LaunchAtLoginManager
+    let updater: SPUUpdater
     let onSetAdvertisingPaused: (Bool) -> Void
     let onSetLaunchAtLogin: (Bool) -> Void
     let onManageModels: () -> Void
@@ -127,6 +129,12 @@ struct MenuBarPopoverView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(accentColor)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
+
+                Button("Check for Updates…") {
+                    updater.checkForUpdates()
+                }
+                .foregroundStyle(.secondary)
+                .font(.system(.footnote, design: .rounded))
 
                 Button("Show Conversation Backups") {
                     let folder = FileManager.default

@@ -19,6 +19,9 @@ packages:
   swift-markdown-ui:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: 2.4.0
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.8.0
 
 targets:
   PastureShared:
@@ -121,6 +124,8 @@ targets:
           - _pasture._tcp
           - _pasture-mpc._tcp
         PastureCloudKitContainerIdentifier: iCloud.com.amrith.pasture
+        SUFeedURL: "https://pasture.sh/appcast.xml"
+        SUPublicEDKey: "YHShgQXAMS90LaQFAnwXDHe7g+qTEHWI33WUHWo7ZL0="
     dependencies:
       - target: PastureSharedMac
       - package: Loom
@@ -129,6 +134,8 @@ targets:
         product: LoomKit
       - package: Loom
         product: LoomCloudKit
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amrith.pasture.helper
