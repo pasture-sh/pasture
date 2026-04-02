@@ -179,8 +179,8 @@ platform :mac do
       build_app_options[:xcargs] = [
         "CODE_SIGN_STYLE=Manual",
         "DEVELOPMENT_TEAM=VRNNS4H6XH",
-        "CODE_SIGN_IDENTITY=Developer ID Application",
-        "PROVISIONING_PROFILE_SPECIFIER=#{profile_name}"
+        "'CODE_SIGN_IDENTITY=Developer ID Application'",
+        "'PROVISIONING_PROFILE_SPECIFIER=#{profile_name}'"
       ].join(" ")
     end
 
