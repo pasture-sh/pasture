@@ -20,6 +20,9 @@ final class LoomAdvertiser: ObservableObject {
     private var healthTask: Task<Void, Never>?
     private var connectionTasks: [UUID: [Task<Void, Never>]] = [:]
     private let defaults = UserDefaults.standard
+    private weak var _activeChannel: AnyObject?
+    private var activeChannelSend: (@Sendable (Data) async throws -> Void)?
+    private var lastPushedOllamaStatus: OllamaStatus?
 
     private enum DefaultsKeys {
         static let isDiscoveryPaused = "pasture.helper.discoveryPaused"
@@ -56,12 +59,27 @@ final class LoomAdvertiser: ObservableObject {
             self?.acceptMPCChannel(channel)
         }
 
+        var loomStarted = false
         do {
             try await loomContext.start()
-            isAdvertising = true
+            loomStarted = true
             diagnostics.startSuccesses += 1
             recordEvent("Advertising started.")
+        } catch {
+            // CloudKit errors (e.g. undeployed production schema) should not prevent
+            // local Bonjour advertising from working. Log and continue with MPC only.
+            let message = error.localizedDescription
+            if message.contains("CKRecord") || message.contains("CloudKit") || message.contains("production schema") {
+                recordEvent("CloudKit error during Loom start (MPC fallback active): \(message)", level: .warning)
+            } else {
+                diagnostics.startFailures += 1
+                recordError(userFacingStartErrorMessage(for: error))
+            }
+        }
 
+        isAdvertising = loomStarted
+
+        if loomStarted {
             acceptTask = Task { [weak self] in
                 guard let self else { return }
 
@@ -107,11 +125,6 @@ final class LoomAdvertiser: ObservableObject {
                     await self.serveChannel(channel)
                 }
             }
-        } catch {
-            diagnostics.startFailures += 1
-            isAdvertising = false
-            ollamaIsReachable = false
-            recordError(userFacingStartErrorMessage(for: error))
         }
     }
 
@@ -172,12 +185,17 @@ final class LoomAdvertiser: ObservableObject {
         let channelID = channel.id
         let peerName = channel.peerName
 
+        // Track the active channel for proactive status pushes.
+        activeChannelSend = channel._sendClosure
+        lastPushedOllamaStatus = nil
+
         let eventTask = Task { [weak self] in
             for await event in channel.events {
                 if case .disconnected = event {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
                         self.connectionTasks.removeValue(forKey: channelID)
+                        self.activeChannelSend = nil
                         if self.connectedPeerName == peerName {
                             self.connectedPeerName = nil
                         }
@@ -203,12 +221,28 @@ final class LoomAdvertiser: ObservableObject {
             guard let self else { return }
 
             while !Task.isCancelled {
-                let reachable = await OllamaAPIClient.shared.isReachable()
+                let status = await OllamaAPIClient.shared.fetchStatus()
                 self.diagnostics.healthChecks += 1
-                if !reachable && self.ollamaIsReachable {
+                if !status.isReachable && self.ollamaIsReachable {
                     self.diagnostics.unreachableChecks += 1
                 }
-                if self.ollamaIsReachable != reachable { self.ollamaIsReachable = reachable }
+                if self.ollamaIsReachable != status.isReachable {
+                    self.ollamaIsReachable = status.isReachable
+                }
+
+                // Push status to iOS when it changes.
+                if status != self.lastPushedOllamaStatus, let sendFn = self.activeChannelSend {
+                    self.lastPushedOllamaStatus = status
+                    let response = ProxyResponse(
+                        id: UUID().uuidString,
+                        type: .status,
+                        ollamaStatus: status,
+                        done: true
+                    )
+                    if let data = try? JSONEncoder().encode(response) {
+                        try? await sendFn(data)
+                    }
+                }
 
                 let snapshot = await self.proxy.diagnosticsSnapshot()
                 self.diagnostics.proxy = snapshot

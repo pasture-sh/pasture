@@ -19,7 +19,9 @@ public struct PeerChannelAdapter: Sendable {
     public let messages: AsyncStream<Data>
     public let events: AsyncStream<PeerChannelEvent>
 
-    private let _send: @Sendable (Data) async throws -> Void
+    // Exposed for callers that need to hold a reference to the send closure
+    // independently of the adapter (e.g. proactive status pushes).
+    public let _sendClosure: @Sendable (Data) async throws -> Void
     private let _disconnect: @Sendable () async -> Void
 
     public init(
@@ -36,12 +38,12 @@ public struct PeerChannelAdapter: Sendable {
         self.transportType = transportType
         self.messages = messages
         self.events = events
-        self._send = send
+        self._sendClosure = send
         self._disconnect = disconnect
     }
 
     public func send(_ data: Data) async throws {
-        try await _send(data)
+        try await _sendClosure(data)
     }
 
     public func disconnect() async {

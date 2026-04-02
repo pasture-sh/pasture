@@ -123,13 +123,27 @@ actor OllamaAPIClient {
     // MARK: - Health check
 
     func isReachable() async -> Bool {
+        let status = await fetchStatus()
+        return status.isReachable
+    }
+
+    func fetchStatus() async -> OllamaStatus {
         let url = baseURL.appendingPathComponent("api/version")
         do {
-            _ = try await validatedData(for: url)
-            return true
+            let data = try await validatedData(for: url)
+            let version = parseVersion(from: data)
+            return OllamaStatus(isReachable: true, version: version)
         } catch {
-            return false
+            return OllamaStatus(isReachable: false)
         }
+    }
+
+    private func parseVersion(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object["version"] as? String,
+              !version.isEmpty
+        else { return nil }
+        return version
     }
 
     private func validatedData(for url: URL) async throws -> Data {

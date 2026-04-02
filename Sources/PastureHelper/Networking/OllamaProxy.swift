@@ -36,6 +36,11 @@ actor OllamaProxy {
         case .cancel:
             await handleCancel(request: request, channel: channel)
 
+        case .status:
+            launchRequestTask(id: request.id) { proxy in
+                await proxy.handleStatus(id: request.id, channel: channel)
+            }
+
         case .backup:
             await BackupManager.shared.write(
                 filename: request.model ?? "unknown",
@@ -200,6 +205,14 @@ actor OllamaProxy {
         }
     }
 
+    private func handleStatus(id: String, channel: PeerChannelAdapter) async {
+        let status = await OllamaAPIClient.shared.fetchStatus()
+        await send(
+            ProxyResponse(id: id, type: .status, ollamaStatus: status, done: true),
+            channel: channel
+        )
+    }
+
     private func handleDelete(id: String, model: String, channel: PeerChannelAdapter) async {
         do {
             try await OllamaAPIClient.shared.delete(model: model)
@@ -251,6 +264,8 @@ actor OllamaProxy {
             diagnostics.cancelRequests += 1
         case .backup:
             diagnostics.backupRequests += 1
+        case .status:
+            diagnostics.statusRequests += 1
         }
     }
 
@@ -300,6 +315,7 @@ struct ProxyDiagnosticsSnapshot: Equatable, Sendable {
     var deleteRequests = 0
     var cancelRequests = 0
     var backupRequests = 0
+    var statusRequests = 0
     var activeRequests = 0
     var activeTaskHighWatermark = 0
     var cancellationsRequested = 0

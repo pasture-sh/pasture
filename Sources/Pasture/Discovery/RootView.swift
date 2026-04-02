@@ -35,16 +35,20 @@ struct RootView: View {
         }
     }
 
+    /// Whether the user has graduated past onboarding and should see the main UI.
+    /// Once true, a single ConversationListView is shown regardless of connection state
+    /// to avoid destroying navigation/chat state during reconnection cycles.
+    private var shouldShowConversationList: Bool {
+        if case .connected = connection.state { return true }
+        return hasCompletedOnboarding && connection.hasEverConnected
+    }
+
     @ViewBuilder
     private var currentContent: some View {
-        if case .connected = connection.state {
-            ConversationListView()
-        } else if hasCompletedOnboarding && connection.hasEverConnected {
+        if shouldShowConversationList {
             ConversationListView()
                 .task {
-                    if case .connected = connection.state {
-                        return
-                    }
+                    guard !connection.isConnected else { return }
                     await connection.startDiscovery(resetReconnectAttempts: false)
                 }
         } else if hasCompletedOnboarding {

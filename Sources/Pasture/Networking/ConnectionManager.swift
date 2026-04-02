@@ -14,6 +14,7 @@ final class ConnectionManager: ObservableObject {
     @Published private(set) var connectedPeerID: UUID?
     @Published private(set) var hasEverConnected = false
     @Published private(set) var diagnostics = ConnectionDiagnostics()
+    @Published private(set) var ollamaStatus: OllamaStatus?
 
     var isConnected: Bool {
         if case .connected = state { return true }
@@ -31,7 +32,6 @@ final class ConnectionManager: ObservableObject {
     private var keepaliveTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = ConnectionRuntimePolicy.maxReconnectAttempts
-    private let requestTimeoutNanoseconds = ConnectionRuntimePolicy.requestTimeoutNanoseconds
     private var lastConnectedPeerName: String?
     private var preferredPeerID: UUID?
     private var inFlightModelFetch: Task<[OllamaModel], Error>?
@@ -99,20 +99,27 @@ final class ConnectionManager: ObservableObject {
 
         do {
             try await loomContext.start()
-            mpcBrowser.start()
-            state = .discovering
-            await refreshAndSyncPeers(source: "startup")
-            startPeerRefreshLoopIfNeeded()
-            recordEvent("Discovery started with \(availableHelpers.count) helper(s) visible.")
-
-            if discoveryTask == nil {
-                discoveryTask = Task { [weak self] in
-                    await self?.runDiscoveryLoop()
-                }
-            }
         } catch {
-            state = .failed("Could not start local discovery: \(error.localizedDescription)")
-            recordError("Discovery failed: \(error.localizedDescription)")
+            // CloudKit errors (e.g. undeployed production schema) should not prevent
+            // local Bonjour discovery from working. Log and continue.
+            let message = error.localizedDescription
+            if message.contains("CKRecord") || message.contains("CloudKit") || message.contains("production schema") {
+                recordEvent("CloudKit error during Loom start (local discovery will still work): \(message)", level: .warning)
+            } else {
+                recordEvent("Loom start failed, continuing with fallback discovery: \(message)", level: .warning)
+            }
+        }
+
+        mpcBrowser.start()
+        state = .discovering
+        await refreshAndSyncPeers(source: "startup")
+        startPeerRefreshLoopIfNeeded()
+        recordEvent("Discovery started with \(availableHelpers.count) helper(s) visible.")
+
+        if discoveryTask == nil {
+            discoveryTask = Task { [weak self] in
+                await self?.runDiscoveryLoop()
+            }
         }
     }
 
@@ -136,9 +143,9 @@ final class ConnectionManager: ObservableObject {
     private func runDiscoveryLoop() async {
         defer { discoveryTask = nil }
 
-        // Count loops without a Loom peer. After ~3 s (5 × ~600 ms), try MPC fallback.
+        // Count loops without a Loom peer. After ~2.8 s (7 × ~400 ms), try MPC fallback.
         var loomTimeoutLoops = 0
-        // Require the target to be visible for 3 consecutive loops (~1.6 s) before connecting.
+        // Require the target to be visible for 2 consecutive loops (~0.8 s) before connecting.
         // Bonjour can advertise a peer before its TCP endpoint is connectable (e.g. right after
         // PastureHelper restarts), causing an immediate "could not resolve peer" failure.
         var peerStableLoops = 0
@@ -149,7 +156,7 @@ final class ConnectionManager: ObservableObject {
             // Prefer Loom (Bonjour + Tailscale + CloudKit trust).
             if let target = autoConnectTarget(from: availableHelpers) {
                 peerStableLoops += 1
-                if peerStableLoops >= 3 {
+                if peerStableLoops >= 2 {
                     await connect(to: .loom(target))
                     return
                 }
@@ -158,15 +165,15 @@ final class ConnectionManager: ObservableObject {
                 loomTimeoutLoops += 1
             }
 
-            // Fall back to MPC after 5 loops without a Loom peer.
-            if loomTimeoutLoops >= 5, let mpcPeer = mpcBrowser.discoveredPeers.first {
+            // Fall back to MPC after 7 loops without a Loom peer.
+            if loomTimeoutLoops >= 7, let mpcPeer = mpcBrowser.discoveredPeers.first {
                 recordEvent("No Loom peer found after \(loomTimeoutLoops) loops. Trying MPC fallback.")
                 await connect(to: .mpc(mpcPeer))
                 return
             }
 
             await refreshAndSyncPeers(source: "discovery-loop")
-            try? await Task.sleep(nanoseconds: 550_000_000)
+            try? await Task.sleep(nanoseconds: 400_000_000)
         }
     }
 
@@ -409,6 +416,10 @@ final class ConnectionManager: ObservableObject {
                 pullContinuations.removeValue(forKey: response.id)
             }
         }
+
+        if response.type == .status, let status = response.ollamaStatus {
+            ollamaStatus = status
+        }
     }
 
     private func connectionDidEnd(expectedConnectionID: UUID) async {
@@ -418,6 +429,7 @@ final class ConnectionManager: ObservableObject {
 
         connection = nil
         connectedPeerID = nil
+        ollamaStatus = nil
         listenTask?.cancel()
         listenTask = nil
         connectionEventTask?.cancel()
@@ -505,7 +517,8 @@ final class ConnectionManager: ObservableObject {
             let newTask = Task { @MainActor [weak self] () throws -> [OllamaModel] in
                 guard let self else { throw ProxyError.notConnected }
                 let response = try await self.sendRequest(
-                    ProxyRequest(id: UUID().uuidString, type: .tags)
+                    ProxyRequest(id: UUID().uuidString, type: .tags),
+                    timeout: ConnectionRuntimePolicy.pingTimeoutNanoseconds
                 )
                 return (response.models ?? []).sorted {
                     $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
@@ -624,13 +637,14 @@ final class ConnectionManager: ObservableObject {
 
     // MARK: - Internal
 
-    private func sendRequest(_ request: ProxyRequest) async throws -> ProxyResponse {
+    private func sendRequest(_ request: ProxyRequest, timeout: UInt64? = nil) async throws -> ProxyResponse {
         guard let activeConnection = connection else { throw ProxyError.notConnected }
         diagnostics.requestsSent += 1
 
+        let effectiveTimeout = timeout ?? ConnectionRuntimePolicy.requestTimeoutNanoseconds
         return try await withCheckedThrowingContinuation { continuation in
             pendingResponses[request.id] = continuation
-            scheduleRequestTimeout(for: request.id)
+            scheduleRequestTimeout(for: request.id, duration: effectiveTimeout)
 
             Task { @MainActor [weak self] in
                 guard let self else {
@@ -677,11 +691,11 @@ final class ConnectionManager: ObservableObject {
         }
     }
 
-    private func scheduleRequestTimeout(for requestID: String) {
+    private func scheduleRequestTimeout(for requestID: String, duration: UInt64 = ConnectionRuntimePolicy.requestTimeoutNanoseconds) {
         responseTimeoutTasks[requestID]?.cancel()
         responseTimeoutTasks[requestID] = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: self.requestTimeoutNanoseconds)
+            try? await Task.sleep(nanoseconds: duration)
             guard !Task.isCancelled else { return }
 
             defer { self.responseTimeoutTasks.removeValue(forKey: requestID) }
@@ -800,10 +814,18 @@ final class ConnectionManager: ObservableObject {
         await loomContext.refreshPeers()
         diagnostics.peerRefreshes += 1
 
-        // LoomContext applies snapshot updates asynchronously. A short delay avoids
-        // reading the previous peer set immediately after requesting a refresh.
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        // LoomContext applies snapshot updates asynchronously. If the first read
+        // returns empty but we previously had peers, retry briefly rather than
+        // sleeping a fixed 250 ms every time.
         syncPeersFromContext(source: source)
+        let hadPeers = !availableHelpers.isEmpty
+        if availableHelpers.isEmpty && hadPeers {
+            for _ in 0..<3 {
+                try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
+                syncPeersFromContext(source: "\(source)-retry")
+                if !availableHelpers.isEmpty { break }
+            }
+        }
     }
 
     private func syncPeersFromContext(source: String) {
@@ -943,6 +965,8 @@ extension ProxyError: LocalizedError {
 enum ConnectionRuntimePolicy {
     static let maxReconnectAttempts = 6
     static let requestTimeoutNanoseconds: UInt64 = 20_000_000_000
+    /// Short timeout for liveness probes (tags/status requests).
+    static let pingTimeoutNanoseconds: UInt64 = 3_000_000_000
 
     static func shouldScheduleReconnect(
         hasEverConnected: Bool,
