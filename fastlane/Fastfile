@@ -185,7 +185,9 @@ platform :mac do
     notarize(
       package: "#{root}/build/macos/PastureHelper.app",
       bundle_id: "com.amrith.pasture.helper",
-      api_key: api_key
+      api_key: api_key,
+      print_log: true,
+      verbose: true
     )
 
     FileUtils.rm_f("#{root}/build/macos/PastureHelper.dmg")
