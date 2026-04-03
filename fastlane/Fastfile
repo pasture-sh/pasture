@@ -172,13 +172,12 @@ platform :mac do
         signingCertificate: "Developer ID Application",
         provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
       }
-      # Automatic signing WITHOUT -allowProvisioningUpdates. The provisioning
-      # profile is pre-installed by CI. -allowProvisioningUpdates hangs on
-      # Sparkle's XPC services whose bundle IDs can't be auto-provisioned.
-      build_app_options[:xcargs] = [
-        "CODE_SIGN_STYLE=Automatic",
-        "DEVELOPMENT_TEAM=VRNNS4H6XH"
-      ].join(" ")
+      # Skip code signing during archive. Signing happens entirely in the
+      # export phase via the manual export_options below. This avoids the
+      # -allowProvisioningUpdates hang on Sparkle's XPC service bundle IDs
+      # while still correctly signing the main app during export.
+      build_app_options[:skip_codesigning] = true
+      build_app_options[:xcargs] = "DEVELOPMENT_TEAM=VRNNS4H6XH"
     end
 
     build_app(build_app_options)
