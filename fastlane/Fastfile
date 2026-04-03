@@ -190,27 +190,22 @@ platform :mac do
         FileUtils.cp(profile_src, "#{app_path}/Contents/embedded.provisionprofile")
       end
 
-      # Sign Sparkle's nested components first (inside-out order is critical).
-      # Never use --deep — it corrupts nested XPC service signatures.
-      sparkle = "#{app_path}/Contents/Frameworks/Sparkle.framework"
-      xpc_services = Dir.glob("#{sparkle}/Versions/B/XPCServices/*.xpc")
-      autoupdate_paths = Dir.glob("#{sparkle}/Versions/B/Autoupdate*")
-
-      (xpc_services + autoupdate_paths).select { |p| File.exist?(p) }.each do |component|
+      # Find every nested code bundle that needs signing: .app, .xpc, .dylib,
+      # .framework. Sign deepest items first (inside-out).
+      nested = Dir.glob("#{app_path}/Contents/Frameworks/**/*.{app,xpc,dylib,framework}")
+                  .sort_by { |p| -p.count("/") } # deepest paths first
+      nested.each do |component|
         sh("codesign", "--force", "--options", "runtime", "--timestamp",
            "--sign", identity, component)
       end
 
-      sh("codesign", "--force", "--options", "runtime", "--timestamp",
-         "--sign", identity, sparkle)
-
-      # Sign the main app bundle last
+      # Sign the main app bundle last, with entitlements
       sh("codesign", "--force", "--options", "runtime", "--timestamp",
          "--sign", identity,
          "--entitlements", "#{root}/Sources/PastureHelper/PastureHelper.entitlements",
          app_path)
 
-      # Verify
+      # Verify the entire bundle
       sh("codesign", "--verify", "--deep", "--strict", app_path)
       UI.success("Manual code signing complete and verified.")
     end
