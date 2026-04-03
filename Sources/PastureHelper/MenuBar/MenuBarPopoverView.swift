@@ -1,11 +1,9 @@
 import Foundation
 import SwiftUI
-import Sparkle
 
 struct MenuBarPopoverView: View {
     @ObservedObject var advertiser: LoomAdvertiser
     @ObservedObject var launchAtLoginManager: LaunchAtLoginManager
-    let updater: SPUUpdater
     let onSetAdvertisingPaused: (Bool) -> Void
     let onSetLaunchAtLogin: (Bool) -> Void
     let onManageModels: () -> Void
@@ -15,6 +13,7 @@ struct MenuBarPopoverView: View {
     @State private var copiedIP = false
     @State private var copyResetTask: Task<Void, Never>?
     @StateObject private var tailscale = TailscaleMonitor()
+    @StateObject private var updateChecker = UpdateChecker()
     private let accentColor = PastureColors.accent
 
     var body: some View {
@@ -27,6 +26,26 @@ struct MenuBarPopoverView: View {
                     Text("Pasture")
                         .font(.system(.headline, design: .rounded, weight: .semibold))
                     Spacer()
+                }
+
+                if let update = updateChecker.updateAvailable {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.callout)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Update available: v\(update.version)")
+                                .font(.system(.callout, design: .rounded, weight: .semibold))
+                            Button("Download update") {
+                                NSWorkspace.shared.open(update.downloadURL)
+                            }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                        }
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 }
 
                 Divider()
@@ -130,9 +149,10 @@ struct MenuBarPopoverView: View {
                     .tint(accentColor)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
 
-                Button("Check for Updates…") {
-                    updater.checkForUpdates()
+                Button(updateChecker.isChecking ? "Checking…" : "Check for Updates") {
+                    Task { await updateChecker.checkForUpdates() }
                 }
+                .disabled(updateChecker.isChecking)
                 .foregroundStyle(.secondary)
                 .font(.system(.footnote, design: .rounded))
 
@@ -161,7 +181,10 @@ struct MenuBarPopoverView: View {
         .background(PastureColors.popoverBackground)
         .colorScheme(.dark)
         .fontDesign(.rounded)
-        .onAppear { tailscale.refresh() }
+        .onAppear {
+            tailscale.refresh()
+            Task { await updateChecker.checkForUpdates() }
+        }
     }
 }
 

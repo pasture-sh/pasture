@@ -160,61 +160,34 @@ platform :mac do
 
     if ENV["SKIP_MATCH"] == "true"
       profile_name = File.read("/tmp/profile_name.txt").strip
-      # Build without code signing, then manually sign after.
-      # Xcode's -allowProvisioningUpdates hangs on Sparkle's XPC service
-      # bundle IDs (org.sparkle-project.*) which can't be auto-provisioned.
-      build_app_options[:skip_codesigning] = true
-      build_app_options[:xcargs] = "DEVELOPMENT_TEAM=VRNNS4H6XH"
-      # Provide export options so Fastlane doesn't fail looking for profiles.
-      # The actual signing is done manually below.
+      # Archive uses automatic signing + -allowProvisioningUpdates so Xcode manages
+      # profiles per bundle ID and skips SPM targets that have no bundle ID.
+      # Export uses manual signing: signingStyle "automatic" in Xcode 26 triggers
+      # "Cloud Signing" which requires a logged-in Xcode account unavailable in CI.
+      # The provisioningProfiles dict is bundle-ID keyed so SPM resource bundles
+      # (which have no matching bundle ID) are not affected.
       build_app_options[:export_options] = {
         method: "developer-id",
-        teamID: "VRNNS4H6XH",
         signingStyle: "manual",
-        signingCertificate: "-",
+        signingCertificate: "Developer ID Application",
         provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
       }
+      build_app_options[:xcargs] = [
+        "CODE_SIGN_STYLE=Automatic",
+        "DEVELOPMENT_TEAM=VRNNS4H6XH",
+        "-allowProvisioningUpdates",
+        "-authenticationKeyPath #{ENV['FASTLANE_ASC_KEY_PATH']}",
+        "-authenticationKeyID #{ENV['FASTLANE_ASC_KEY_ID']}",
+        "-authenticationKeyIssuerID #{ENV['FASTLANE_ASC_ISSUER_ID']}"
+      ].join(" ")
     end
 
-    # Build and archive. With skip_codesigning the archive is unsigned
-    # but export still produces the .app in the output directory.
     build_app(build_app_options)
-
-    if ENV["SKIP_MATCH"] == "true"
-      app_path = "#{root}/build/macos/PastureHelper.app"
-      identity = "Developer ID Application"
-
-      # Install provisioning profile into the app bundle
-      profile_src = Dir.glob(File.expand_path("~/Library/MobileDevice/Provisioning Profiles/*.provisionprofile")).first
-      if profile_src
-        FileUtils.cp(profile_src, "#{app_path}/Contents/embedded.provisionprofile")
-      end
-
-      # Find every nested code bundle that needs signing: .app, .xpc, .dylib,
-      # .framework. Sign deepest items first (inside-out).
-      nested = Dir.glob("#{app_path}/Contents/Frameworks/**/*.{app,xpc,dylib,framework}")
-                  .sort_by { |p| -p.count("/") } # deepest paths first
-      nested.each do |component|
-        sh("codesign", "--force", "--options", "runtime", "--timestamp",
-           "--sign", identity, component)
-      end
-
-      # Sign the main app bundle last, with entitlements
-      sh("codesign", "--force", "--options", "runtime", "--timestamp",
-         "--sign", identity,
-         "--entitlements", "#{root}/Sources/PastureHelper/PastureHelper.entitlements",
-         app_path)
-
-      # Verify the entire bundle
-      sh("codesign", "--verify", "--deep", "--strict", app_path)
-      UI.success("Manual code signing complete and verified.")
-    end
 
     notarize(
       package: "#{root}/build/macos/PastureHelper.app",
       bundle_id: "com.amrith.pasture.helper",
-      api_key: api_key,
-      print_log: true
+      api_key: api_key
     )
 
     FileUtils.rm_f("#{root}/build/macos/PastureHelper.dmg")
