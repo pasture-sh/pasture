@@ -164,10 +164,20 @@ platform :mac do
       # Xcode's -allowProvisioningUpdates hangs on Sparkle's XPC service
       # bundle IDs (org.sparkle-project.*) which can't be auto-provisioned.
       build_app_options[:skip_codesigning] = true
-      build_app_options[:skip_package_ipa] = true
       build_app_options[:xcargs] = "DEVELOPMENT_TEAM=VRNNS4H6XH"
+      # Provide export options so Fastlane doesn't fail looking for profiles.
+      # The actual signing is done manually below.
+      build_app_options[:export_options] = {
+        method: "developer-id",
+        teamID: "VRNNS4H6XH",
+        signingStyle: "manual",
+        signingCertificate: "-",
+        provisioningProfiles: { "com.amrith.pasture.helper" => profile_name }
+      }
     end
 
+    # Build and archive. With skip_codesigning the archive is unsigned
+    # but export still produces the .app in the output directory.
     build_app(build_app_options)
 
     if ENV["SKIP_MATCH"] == "true"
@@ -180,12 +190,13 @@ platform :mac do
         FileUtils.cp(profile_src, "#{app_path}/Contents/embedded.provisionprofile")
       end
 
-      # Sign Sparkle's nested components first (inside-out order)
+      # Sign Sparkle's nested components first (inside-out order is critical).
+      # Never use --deep — it corrupts nested XPC service signatures.
       sparkle = "#{app_path}/Contents/Frameworks/Sparkle.framework"
       xpc_services = Dir.glob("#{sparkle}/Versions/B/XPCServices/*.xpc")
-      autoupdate = "#{sparkle}/Versions/B/Autoupdate"
+      autoupdate_paths = Dir.glob("#{sparkle}/Versions/B/Autoupdate*")
 
-      (xpc_services + [autoupdate]).select { |p| File.exist?(p) }.each do |component|
+      (xpc_services + autoupdate_paths).select { |p| File.exist?(p) }.each do |component|
         sh("codesign", "--force", "--options", "runtime", "--timestamp",
            "--sign", identity, component)
       end
@@ -199,7 +210,9 @@ platform :mac do
          "--entitlements", "#{root}/Sources/PastureHelper/PastureHelper.entitlements",
          app_path)
 
-      UI.success("Manual code signing complete.")
+      # Verify
+      sh("codesign", "--verify", "--deep", "--strict", app_path)
+      UI.success("Manual code signing complete and verified.")
     end
 
     notarize(
