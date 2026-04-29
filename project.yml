@@ -15,7 +15,7 @@ settings:
 packages:
   Loom:
     url: https://github.com/EthanLipnik/Loom
-    exactVersion: 1.5.17
+    exactVersion: 1.7.10
   swift-markdown-ui:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: 2.4.0

@@ -3,22 +3,29 @@ import MultipeerConnectivity
 import PastureShared
 
 /// Advertises the Mac helper via MultipeerConnectivity and accepts incoming
-/// connections from the Pasture iOS app. Acts as a parallel transport alongside
+/// invitations from the Pasture iOS app. Acts as a parallel transport alongside
 /// Loom, providing a fallback when Bonjour is unavailable (offline/no shared Wi-Fi).
+///
+/// The Mac side intentionally does not browse: discovery is iOS-driven (the iPhone
+/// finds the Mac and invites it). This avoids the Mac auto-inviting every other
+/// Pasture user on the same network, which is both privacy-leaky and a source of
+/// session-creation races.
 @MainActor
 final class MPCAdvertiser: NSObject, ObservableObject {
     static let serviceType = "pasture-mpc"
 
     private let myPeerID: MCPeerID
     private var advertiser: MCNearbyServiceAdvertiser?
-    private var browser: MCNearbyServiceBrowser?
     private var handler: MPCAdvertiserHandler?
 
     private(set) var channels: [MCPeerID: MPCChannel] = [:]
     var onPeerChannel: ((PeerChannelAdapter) -> Void)?
 
     override init() {
-        myPeerID = MCPeerID(displayName: Host.current().localizedName ?? "Pasture for Mac")
+        myPeerID = PersistentPeerID.load(
+            displayName: Host.current().localizedName ?? "Pasture for Mac",
+            defaultsKey: "pasture.helper.mpc.peerID"
+        )
         super.init()
     }
 
@@ -33,19 +40,12 @@ final class MPCAdvertiser: NSObject, ObservableObject {
         a.delegate = h
         advertiser = a
 
-        let b = MCNearbyServiceBrowser(peer: myPeerID, serviceType: Self.serviceType)
-        b.delegate = h
-        browser = b
-
         a.startAdvertisingPeer()
-        b.startBrowsingForPeers()
     }
 
     func stop() {
         advertiser?.stopAdvertisingPeer()
-        browser?.stopBrowsingForPeers()
         advertiser = nil
-        browser = nil
         handler = nil
 
         for channel in channels.values {
@@ -66,18 +66,6 @@ final class MPCAdvertiser: NSObject, ObservableObject {
         session.delegate = handler
         channels[peerID] = MPCChannel(session: session, peer: peerID)
         invitationHandler(true, session)
-    }
-
-    func foundPeer(_ peerID: MCPeerID) {
-        guard let browser, channels[peerID] == nil else { return }
-        let session = MCSession(peer: myPeerID, securityIdentity: nil, encryptionPreference: .required)
-        session.delegate = handler
-        channels[peerID] = MPCChannel(session: session, peer: peerID)
-        browser.invitePeer(peerID, to: session, withContext: nil, timeout: 10)
-    }
-
-    func lostPeer(_ peerID: MCPeerID) {
-        channels.removeValue(forKey: peerID)
     }
 
     func peerConnected(_ peerID: MCPeerID) {
@@ -105,7 +93,6 @@ private struct SendableInvitationHandler: @unchecked Sendable {
 
 private final class MPCAdvertiserHandler: NSObject,
     MCNearbyServiceAdvertiserDelegate,
-    MCNearbyServiceBrowserDelegate,
     MCSessionDelegate,
     @unchecked Sendable
 {
@@ -125,18 +112,6 @@ private final class MPCAdvertiserHandler: NSObject,
     }
 
     func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {}
-
-    // MARK: MCNearbyServiceBrowserDelegate
-
-    func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-        Task { @MainActor [weak self] in self?.owner?.foundPeer(peerID) }
-    }
-
-    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
-        Task { @MainActor [weak self] in self?.owner?.lostPeer(peerID) }
-    }
-
-    func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {}
 
     // MARK: MCSessionDelegate
 

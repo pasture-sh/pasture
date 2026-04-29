@@ -13,6 +13,7 @@
 		148C0A5438640C9B71E60E16 /* ModelManagerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9089F079A6419F1318796C49 /* ModelManagerViewModel.swift */; };
 		15127FEF85F6C6749210D946 /* PastureLoomRuntimeConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205041588057F44EFFBD6175 /* PastureLoomRuntimeConfiguration.swift */; };
 		15171B1127AAA8708B202B90 /* LoomCloudKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1D72C7EC674934F5D1E3D66 /* LoomCloudKit */; };
+		18CDA97DBA32247138856564 /* PersistentPeerID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BAED6E07D0225BE83B3502 /* PersistentPeerID.swift */; };
 		1F9B96FFC399D03C00555917 /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7263A1606AE598CF4D1B8518 /* Nunito-ExtraBold.ttf */; };
 		22C7A02D205ABB92A67032DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0611E4B6848B23585387964 /* Assets.xcassets */; };
 		2798455CBBF20E52FE5BF158 /* EnvironmentBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8DFB494D9A6BA2D91A73BF /* EnvironmentBackground.swift */; };
@@ -54,6 +55,7 @@
 		CB9C7F43CFDFFBE849037F70 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DEEF8D6953AE8F57D6A02EC /* ModelManagerView.swift */; };
 		CBDFDC5B281EE33F11EAFE53 /* LoomKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1B9CDBDE3217C44B29E4877C /* LoomKit */; };
 		CDD5906AA28249E493170069 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2198395743B797A614B2C130 /* PrivacyInfo.xcprivacy */; };
+		D1952260A58DC2CD697014CA /* PersistentPeerID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BAED6E07D0225BE83B3502 /* PersistentPeerID.swift */; };
 		D3F89D09C2BEECDB98CDFDC9 /* ChatIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B46DBB3F6BF212AD90ABA6 /* ChatIntent.swift */; };
 		D4A4B2A468A8C80FC0CE7CA5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEB13E7D7BA6442D0FEAFB7B /* Assets.xcassets */; };
 		D648DB60C88B5F55BD056187 /* LoomCloudKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0946FB92F558DD2072C62EA9 /* LoomCloudKit */; };
@@ -122,6 +124,7 @@
 		55B5B12BDE2CF57443CA9AC6 /* OllamaAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaAPIClient.swift; sourceTree = "<group>"; };
 		5C0E6D167FAFDD5BEBE5F8F1 /* Pasture.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Pasture.entitlements; sourceTree = "<group>"; };
 		63B5F562DC35D1E878F8C49B /* ConversationRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRecord.swift; sourceTree = "<group>"; };
+		68BAED6E07D0225BE83B3502 /* PersistentPeerID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentPeerID.swift; sourceTree = "<group>"; };
 		6B327D9D9FA11F32CD56DACC /* MessageRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRecord.swift; sourceTree = "<group>"; };
 		712B163D18CA976D3F8CB16F /* OllamaProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaProxy.swift; sourceTree = "<group>"; };
 		7263A1606AE598CF4D1B8518 /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Nunito-ExtraBold.ttf"; sourceTree = "<group>"; };
@@ -208,13 +211,6 @@
 			path = Discovery;
 			sourceTree = "<group>";
 		};
-		220FED7F0A408EAAB03DA8CF /* Environment */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Environment;
-			sourceTree = "<group>";
-		};
 		3D63C326C7E26723802D6CE6 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
@@ -253,16 +249,10 @@
 				E392F115741BB17E320D6698 /* MPCSendable.swift */,
 				2983559DCB7230FC3F39CEFF /* OllamaModels.swift */,
 				A521975B06927DF82F0A8005 /* PeerChannel.swift */,
+				68BAED6E07D0225BE83B3502 /* PersistentPeerID.swift */,
 				ACF69D0D0A6E6CCC30AAEA7C /* WireProtocol.swift */,
 			);
 			path = PastureShared;
-			sourceTree = "<group>";
-		};
-		5DA9F9A5E2FEBCC47C5290C2 /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Onboarding;
 			sourceTree = "<group>";
 		};
 		5FACBD53C23454F8A679F3F1 /* Products */ = {
@@ -297,13 +287,9 @@
 				C79467F9EFEDDAAEE718E3D4 /* Conversations */,
 				9B404DC305097B71B884BDC8 /* Design */,
 				15049E68AA45A07FE093D7FE /* Discovery */,
-				220FED7F0A408EAAB03DA8CF /* Environment */,
 				B6B774AB1FE3BF876D82BC11 /* Fonts */,
-				757326CD235D71ECE11B9D90 /* Models */,
 				745FCE28041CB55DBB8FF22D /* Networking */,
-				5DA9F9A5E2FEBCC47C5290C2 /* Onboarding */,
 				8C3335F986B757A8F7DE8A18 /* Persistence */,
-				7ACED97DED4CBEC5A124189B /* Settings */,
 			);
 			path = Pasture;
 			sourceTree = "<group>";
@@ -334,13 +320,6 @@
 			path = Networking;
 			sourceTree = "<group>";
 		};
-		757326CD235D71ECE11B9D90 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
 		7770225800A3E651E4E7340E /* PastureHelper */ = {
 			isa = PBXGroup;
 			children = (
@@ -359,13 +338,6 @@
 				62A7ABB29D96FD303E480877 /* Updates */,
 			);
 			path = PastureHelper;
-			sourceTree = "<group>";
-		};
-		7ACED97DED4CBEC5A124189B /* Settings */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Settings;
 			sourceTree = "<group>";
 		};
 		7C9C5DDF6E242652B6E07573 /* PastureTests */ = {
@@ -705,6 +677,7 @@
 				98E6B54C100ACA54FC12CBAE /* MPCSendable.swift in Sources */,
 				DA88E5CDADF4F916F429B52A /* OllamaModels.swift in Sources */,
 				3B662099CBC7709F06CC9287 /* PeerChannel.swift in Sources */,
+				D1952260A58DC2CD697014CA /* PersistentPeerID.swift in Sources */,
 				C44A62C6080220CB32F0DAD0 /* WireProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -727,6 +700,7 @@
 				DBFFF89DF418B721C54DBA9D /* MPCSendable.swift in Sources */,
 				7B74983AEBD4C810C7BCE06F /* OllamaModels.swift in Sources */,
 				591A0B883343DAAE71F20C36 /* PeerChannel.swift in Sources */,
+				18CDA97DBA32247138856564 /* PersistentPeerID.swift in Sources */,
 				73233095ECF6A3379B7088AC /* WireProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1173,7 +1147,7 @@
 			repositoryURL = "https://github.com/EthanLipnik/Loom";
 			requirement = {
 				kind = exactVersion;
-				version = 1.5.17;
+				version = 1.7.10;
 			};
 		};
 		9277B3225DB818F9F49F4346 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {

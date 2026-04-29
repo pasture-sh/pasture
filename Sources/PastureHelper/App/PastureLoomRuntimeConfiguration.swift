@@ -49,8 +49,7 @@ enum PastureLoomRuntimeConfiguration {
         guard !trimmed.isEmpty else { return nil }
 
         return LoomCloudKitConfiguration(
-            containerIdentifier: trimmed,
-            shareTitle: "Pasture Device Access"
+            containerIdentifier: trimmed
         )
     }
 

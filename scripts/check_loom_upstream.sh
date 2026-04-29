@@ -20,7 +20,7 @@ fi
 latest_version="$(
   git ls-remote --tags --refs https://github.com/EthanLipnik/Loom \
     | awk -F/ '{print $NF}' \
-    | rg '^[0-9]+\.[0-9]+\.[0-9]+$' \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
     | sort -V \
     | tail -n 1
 )"

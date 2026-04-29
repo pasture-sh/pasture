@@ -23,7 +23,10 @@ final class MPCBrowser: NSObject, ObservableObject {
     private var pendingInvites: [MCPeerID: CheckedContinuation<PeerChannelAdapter, Error>] = [:]
 
     override init() {
-        myPeerID = MCPeerID(displayName: UIDevice.current.name)
+        myPeerID = PersistentPeerID.load(
+            displayName: UIDevice.current.name,
+            defaultsKey: "pasture.mpc.peerID"
+        )
         super.init()
     }
 
