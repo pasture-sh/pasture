@@ -183,7 +183,9 @@ struct MenuBarPopoverView: View {
         .fontDesign(.rounded)
         .onAppear {
             tailscale.refresh()
+            #if !DEBUG
             Task { await updateChecker.checkForUpdates() }
+            #endif
         }
     }
 }

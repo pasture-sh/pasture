@@ -85,28 +85,37 @@ final class MenuBarController {
     ) {
         guard let button = statusItem.button else { return }
 
-        let tintColor: NSColor
+        // Use a colored palette only for anomaly states. Normal/idle states render
+        // as a template image so macOS auto-tints for contrast against any wallpaper.
+        let coloredTint: NSColor?
         let tooltip: String
         if !ollamaIsReachable {
-            tintColor = .systemRed
+            coloredTint = .systemRed
             tooltip = "Pasture: Ollama not running"
-        } else if connectedPeerName != nil {
-            tintColor = PastureColors.accentNS
-            tooltip = "Pasture: iPhone connected"
         } else if isPaused {
-            tintColor = .systemOrange
+            coloredTint = .systemOrange
             tooltip = "Pasture: discovery paused"
+        } else if connectedPeerName != nil {
+            coloredTint = nil
+            tooltip = "Pasture: iPhone connected"
         } else if isAdvertising {
-            tintColor = PastureColors.accentNS
+            coloredTint = nil
             tooltip = "Pasture: ready"
         } else {
-            tintColor = .systemGray
+            coloredTint = nil
             tooltip = "Pasture: starting up"
         }
 
-        let config = NSImage.SymbolConfiguration(paletteColors: [tintColor])
-        button.image = NSImage(systemSymbolName: "sun.horizon.fill", accessibilityDescription: "Pasture")?
-            .withSymbolConfiguration(config)
+        let baseImage = NSImage(systemSymbolName: "sun.horizon.fill", accessibilityDescription: "Pasture")
+        if let coloredTint {
+            let config = NSImage.SymbolConfiguration(paletteColors: [coloredTint])
+            let tinted = baseImage?.withSymbolConfiguration(config)
+            tinted?.isTemplate = false
+            button.image = tinted
+        } else {
+            baseImage?.isTemplate = true
+            button.image = baseImage
+        }
         button.toolTip = tooltip
     }
 
