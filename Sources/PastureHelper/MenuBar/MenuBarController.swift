@@ -85,37 +85,33 @@ final class MenuBarController {
     ) {
         guard let button = statusItem.button else { return }
 
-        // Use a colored palette only for anomaly states. Normal/idle states render
-        // as a template image so macOS auto-tints for contrast against any wallpaper.
-        let coloredTint: NSColor?
+        // Always render the icon as a template image so macOS auto-tints it against
+        // the menu bar appearance (dark on light wallpapers, light on dark). For
+        // anomaly states we set an explicit contentTintColor as an attention signal;
+        // a nil tint preserves the standard menu-bar look.
+        let tintColor: NSColor?
         let tooltip: String
         if !ollamaIsReachable {
-            coloredTint = .systemRed
+            tintColor = .systemRed
             tooltip = "Pasture: Ollama not running"
         } else if isPaused {
-            coloredTint = .systemOrange
+            tintColor = .systemOrange
             tooltip = "Pasture: discovery paused"
         } else if connectedPeerName != nil {
-            coloredTint = nil
+            tintColor = nil
             tooltip = "Pasture: iPhone connected"
         } else if isAdvertising {
-            coloredTint = nil
+            tintColor = nil
             tooltip = "Pasture: ready"
         } else {
-            coloredTint = nil
+            tintColor = nil
             tooltip = "Pasture: starting up"
         }
 
-        let baseImage = NSImage(systemSymbolName: "sun.horizon.fill", accessibilityDescription: "Pasture")
-        if let coloredTint {
-            let config = NSImage.SymbolConfiguration(paletteColors: [coloredTint])
-            let tinted = baseImage?.withSymbolConfiguration(config)
-            tinted?.isTemplate = false
-            button.image = tinted
-        } else {
-            baseImage?.isTemplate = true
-            button.image = baseImage
-        }
+        let image = NSImage(systemSymbolName: "sun.horizon.fill", accessibilityDescription: "Pasture")
+        image?.isTemplate = true
+        button.image = image
+        button.contentTintColor = tintColor
         button.toolTip = tooltip
     }
 

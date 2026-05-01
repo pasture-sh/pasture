@@ -61,6 +61,8 @@ targets:
       path: Sources/Pasture/Info.plist
       properties:
         CFBundleDisplayName: Pasture
+        CFBundleShortVersionString: "1.2.0"
+        CFBundleVersion: "3"
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: "Pasture uses your local network to find and connect to your Mac running Ollama."
         NSBonjourServices:
@@ -115,6 +117,8 @@ targets:
       path: Sources/PastureHelper/Info.plist
       properties:
         CFBundleDisplayName: Pasture for Mac
+        CFBundleShortVersionString: "1.2.0"
+        CFBundleVersion: "3"
         LSUIElement: true
         NSLocalNetworkUsageDescription: "Pasture for Mac uses your local network to connect to Pasture for iOS."
         NSBonjourServices:
