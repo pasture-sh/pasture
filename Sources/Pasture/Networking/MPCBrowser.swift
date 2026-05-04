@@ -132,10 +132,21 @@ final class MPCBrowser: NSObject, ObservableObject {
     }
 }
 
-enum MPCError: Error {
+enum MPCError: LocalizedError {
     case notStarted
     case connectionFailed
     case stopped
+
+    var errorDescription: String? {
+        switch self {
+        case .notStarted:
+            return "MultipeerConnectivity browser is not running."
+        case .connectionFailed:
+            return "MPC session disconnected before the handshake completed (the Mac may be running a different build, or local-network access is restricted)."
+        case .stopped:
+            return "MultipeerConnectivity browser was stopped while a connect was in flight."
+        }
+    }
 }
 
 /// Wraps an MPC invitation handler closure as @unchecked Sendable so it can be
