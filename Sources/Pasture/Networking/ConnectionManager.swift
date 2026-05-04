@@ -247,11 +247,30 @@ final class ConnectionManager: ObservableObject {
             let channel: PeerChannelAdapter
             switch target {
             case .loom(let peer):
-                let handle = try await loomContext.connect(peer)
-                channel = await makeLoomChannelAdapter(handle: handle, peer: peer)
-                connectedPeerID = peer.id.deviceID
-                rememberPreferredPeer(peer)
-                mpcBrowser.stop()
+                do {
+                    let handle = try await loomContext.connect(peer)
+                    channel = await makeLoomChannelAdapter(handle: handle, peer: peer)
+                    connectedPeerID = peer.id.deviceID
+                    rememberPreferredPeer(peer)
+                    mpcBrowser.stop()
+                } catch {
+                    // If Loom fails (e.g. peerNotFound state-consistency bug or trust
+                    // verification timeout), try the MPC fallback if the same Mac is
+                    // visible there. MPC is slower and Bluetooth-friendly but reliable.
+                    if let mpcPeer = mpcBrowser.discoveredPeers.first(where: {
+                        $0.displayName == peer.name
+                    }) {
+                        recordEvent(
+                            "Loom connect failed (\(error.localizedDescription)). Falling back to MPC for \(peer.name).",
+                            level: .warning
+                        )
+                        channel = try await mpcBrowser.connect(to: mpcPeer)
+                        connectedPeerID = nil
+                        rememberPreferredPeer(peer)
+                    } else {
+                        throw error
+                    }
+                }
             case .mpc(let peer):
                 channel = try await mpcBrowser.connect(to: peer)
                 connectedPeerID = nil
