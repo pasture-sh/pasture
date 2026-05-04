@@ -313,7 +313,12 @@ private struct InstallHelperStepView: View {
 
                 case .macFound:
                     ForEach(stickyHelpers, id: \.id) { peer in
-                        MacConnectButton(peer: peer, palette: palette, reduceTransparency: reduceTransparency)
+                        MacConnectButton(
+                            peer: peer,
+                            palette: palette,
+                            reduceTransparency: reduceTransparency,
+                            onTap: onContinue
+                        )
                             .padding(.horizontal, 24)
                     }
 
@@ -411,10 +416,12 @@ private struct MacConnectButton: View {
     let peer: LoomPeerSnapshot
     let palette: EnvironmentPalette
     let reduceTransparency: Bool
+    var onTap: (() -> Void)? = nil
     @EnvironmentObject private var connection: ConnectionManager
 
     var body: some View {
         Button {
+            onTap?()
             Task { await connection.connectToHelper(peerID: peer.id) }
         } label: {
             HStack(spacing: 12) {
@@ -477,8 +484,9 @@ private struct WaitingForMacStepView: View {
                     .padding(.horizontal, 24)
                 }
 
-                // Error text only when failed AND no Mac is available to tap.
-                if let msg = errorMessage, stickyHelpers.isEmpty {
+                // Surface any connection error — even when a Mac button is visible —
+                // so a failed connect doesn't look like a silent no-op.
+                if let msg = errorMessage {
                     Text(msg)
                         .font(.system(.footnote, design: .rounded))
                         .foregroundStyle(.white.opacity(0.92))
@@ -525,6 +533,9 @@ private struct WaitingForMacStepView: View {
         }
         .onChange(of: connection.availableHelpers) { _, helpers in
             latchHelpers(helpers)
+        }
+        .onChange(of: isFailed) { _, failed in
+            if failed { showDiagnostics = true }
         }
     }
 
