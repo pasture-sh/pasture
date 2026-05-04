@@ -1,8 +1,11 @@
 import SwiftUI
 import SwiftData
+import os.log
 #if os(iOS)
 import UIKit
 #endif
+
+private let log = Logger(subsystem: "com.amrith.pasture", category: "ConversationListView")
 
 struct ConversationListView: View {
     @EnvironmentObject var connection: ConnectionManager
@@ -225,7 +228,7 @@ struct ConversationListView: View {
         do {
             try modelContext.save()
         } catch {
-            print("[ConversationListView] Failed to save new conversation: \(error)")
+            log.error("[ConversationListView] Failed to save new conversation: \(error)")
         }
         selectedConversation = conversation
 #if os(iOS)
@@ -238,7 +241,7 @@ struct ConversationListView: View {
         do {
             try modelContext.save()
         } catch {
-            print("[ConversationListView] Failed to save after deleting conversation: \(error)")
+            log.error("[ConversationListView] Failed to save after deleting conversation: \(error)")
         }
     }
 
@@ -252,7 +255,7 @@ struct ConversationListView: View {
         do {
             try modelContext.save()
         } catch {
-            print("[ConversationListView] Failed to save renamed conversation: \(error)")
+            log.error("[ConversationListView] Failed to save renamed conversation: \(error)")
         }
         renamingConversation = nil
     }
